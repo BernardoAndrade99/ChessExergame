@@ -11,6 +11,7 @@ interface BoardSquareProps {
   isSelected: boolean
   isLegalTarget: boolean
   isHovered: boolean
+  isDropTarget: boolean
   isLastMove: boolean
   isCheck: boolean
   showRankLabel: boolean
@@ -20,7 +21,7 @@ interface BoardSquareProps {
 
 export const BoardSquare: React.FC<BoardSquareProps> = ({
   squareName, piece, isLight, isSelected, isLegalTarget,
-  isHovered, isLastMove, isCheck, showRankLabel, showFileLabel, isGrabbed,
+  isHovered, isDropTarget, isLastMove, isCheck, showRankLabel, showFileLabel, isGrabbed,
 }) => {
   const { flashSquare, flashType } = useGameStore()
   const isFlashing = flashSquare === squareName
@@ -31,6 +32,7 @@ export const BoardSquare: React.FC<BoardSquareProps> = ({
     'board-square',
     isLight ? 'light' : 'dark',
     isSelected ? 'selected' : '',
+    isDropTarget ? 'drop-target' : '',
     isHovered && !isSelected ? 'hovered' : '',
     isCheck ? 'in-check' : '',
     isLastMove && !isSelected ? 'last-move' : '',
@@ -41,7 +43,7 @@ export const BoardSquare: React.FC<BoardSquareProps> = ({
     <div
       className={classNames}
       data-square={squareName}
-      style={isLastMove && !isSelected && !isCheck ? { background: 'rgba(245,158,11,0.22)' } : undefined}
+      style={isLastMove && !isSelected && !isCheck && !isDropTarget ? { background: 'rgba(245,158,11,0.22)' } : undefined}
     >
       {showRankLabel && <span className="board-label rank">{rank}</span>}
       {showFileLabel && <span className="board-label file">{file}</span>}

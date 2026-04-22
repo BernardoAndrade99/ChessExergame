@@ -20,7 +20,7 @@
   --sq-light:       #f0d9b5;
   --sq-dark:        #b58863;
   --sq-hover:       rgba(255,255,255,0.15);
-  --sq-selected:    rgba(245,158,11,0.55);
+  --sq-selected:    rgba(245,158,11,0.74);
   --sq-legal:       rgba(16,185,129,0.45);
   --sq-check:       rgba(239,68,68,0.6);
 
@@ -63,7 +63,7 @@ html, body, #root {
 /* ─── Layout ─────────────────────────────────────────────────────── */
 .app-layout {
   display: grid;
-  grid-template-columns: 220px 1fr 220px;
+  grid-template-columns: 330px 1fr 240px;
   grid-template-rows: 56px 1fr;
   height: 100vh;
   gap: 0;
@@ -200,7 +200,14 @@ html, body, #root {
   background: var(--sq-hover);
   pointer-events: none;
 }
-.board-square.selected { background: var(--sq-selected) !important; }
+.board-square.selected {
+  background: var(--sq-selected) !important;
+  box-shadow: inset 0 0 0 2px rgba(255, 241, 196, 0.95), inset 0 0 24px rgba(245, 158, 11, 0.5);
+}
+.board-square.drop-target {
+  background: rgba(14,165,233,0.45) !important;
+  box-shadow: inset 0 0 0 3px rgba(56,189,248,0.95), inset 0 0 28px rgba(14,165,233,0.42);
+}
 .board-square.legal-target::after {
   content: '';
   position: absolute;
@@ -274,6 +281,16 @@ html, body, #root {
   background: #000;
   aspect-ratio: 4/3;
   width: 100%;
+  min-height: 300px;
+}
+.camera-container.camera-size-compact {
+  min-height: 230px;
+}
+.camera-container.camera-size-medium {
+  min-height: 320px;
+}
+.camera-container.camera-size-large {
+  min-height: 420px;
 }
 .camera-container video,
 .camera-container canvas {
@@ -300,6 +317,43 @@ html, body, #root {
   padding: 4px 8px;
   border-radius: 20px;
   backdrop-filter: blur(4px);
+}
+
+.camera-options {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 4px 6px;
+  backdrop-filter: blur(4px);
+}
+
+.camera-options-label {
+  font-size: 0.62rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.camera-options-select {
+  background: rgba(13,18,37,0.92);
+  color: var(--text-primary);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  font-size: 0.64rem;
+  padding: 3px 6px;
+  outline: none;
+  max-width: 132px;
+}
+
+.camera-options-select:focus {
+  border-color: var(--accent-gold);
 }
 
 .camera-dot {

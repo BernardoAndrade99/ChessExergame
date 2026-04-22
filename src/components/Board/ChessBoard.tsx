@@ -29,6 +29,7 @@ export const ChessBoard: React.FC = () => {
       const isSelected = game.selectedSquare === squareName
       const isLegalTarget = game.legalTargets.includes(squareName)
       const isHovered = cursor.squareName === squareName
+      const isDropTarget = gestureState === 'grabbing' && isHovered && !isSelected
       const isLastMove = !!(game.lastMove &&
         (game.lastMove.from === squareName || game.lastMove.to === squareName))
       const isCheck = game.isCheck && piece?.type === 'k' &&
@@ -45,6 +46,7 @@ export const ChessBoard: React.FC = () => {
           isSelected={isSelected}
           isLegalTarget={isLegalTarget}
           isHovered={isHovered}
+          isDropTarget={isDropTarget}
           isLastMove={isLastMove}
           isCheck={isCheck}
           showRankLabel={col === 0}

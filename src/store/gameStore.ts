@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { GestureState } from '../lib/gestureClassifier'
 import type { CalibrationBounds } from '../lib/coordinateMapper'
 import { loadCalibration } from '../lib/coordinateMapper'
+import type { ArmPieceType } from '../lib/trajectoryMatcher'
 
 export type GameMode = 'puzzle' | 'freegame'
 export type PlayerSide = 'white' | 'black'
@@ -69,6 +70,19 @@ interface ChessMoveStore {
   flashSquare: string | null
   flashType: 'legal' | 'illegal' | null
   triggerFlash: (square: string, type: 'legal' | 'illegal') => void
+
+  // Phase 1.5 — Arm tracking mode
+  armModeEnabled: boolean
+  setArmModeEnabled: (v: boolean) => void
+  detectedPieceType: ArmPieceType | null   // null = Queen/King/Pawn (no arm pattern)
+  armConfidence: number                    // 0–1
+  setArmDetection: (pieceType: ArmPieceType | null, confidence: number) => void
+  isRecordingTrajectory: boolean
+  setRecordingTrajectory: (v: boolean) => void
+  armMismatch: boolean                     // true when grabbed piece ≠ detected arm pattern
+  setArmMismatch: (v: boolean) => void
+  armDestinationSquare: string | null      // destination computed from left-wrist endpoint
+  setArmDestinationSquare: (sq: string | null) => void
 }
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -123,4 +137,17 @@ export const useGameStore = create<ChessMoveStore>((set) => ({
     set({ flashSquare: square, flashType: type })
     setTimeout(() => set({ flashSquare: null, flashType: null }), 500)
   },
+
+  // Phase 1.5 — Arm tracking mode
+  armModeEnabled: false,
+  setArmModeEnabled: (armModeEnabled) => set({ armModeEnabled }),
+  detectedPieceType: null,
+  armConfidence: 0,
+  setArmDetection: (detectedPieceType, armConfidence) => set({ detectedPieceType, armConfidence }),
+  isRecordingTrajectory: false,
+  setRecordingTrajectory: (isRecordingTrajectory) => set({ isRecordingTrajectory }),
+  armMismatch: false,
+  setArmMismatch: (armMismatch) => set({ armMismatch }),
+  armDestinationSquare: null,
+  setArmDestinationSquare: (armDestinationSquare) => set({ armDestinationSquare }),
 }))

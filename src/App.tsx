@@ -4,13 +4,18 @@ import { useGameStore } from './store/gameStore'
 import { useChessEngine } from './hooks/useChessEngine'
 import { useStockfish } from './hooks/useStockfish'
 import { useGesture } from './hooks/useGesture'
+import { useArmMotion } from './hooks/useArmMotion'
 import { ChessBoard } from './components/Board/ChessBoard'
 import { CameraFeed } from './components/Vision/CameraFeed'
 import { HandCursor } from './components/Cursor/HandCursor'
 import { EvalBar } from './components/HUD/EvalBar'
 import { MoveHistory } from './components/HUD/MoveHistory'
 import { StatusOverlay } from './components/HUD/StatusOverlay'
+import { ArmModePanel } from './components/HUD/ArmModePanel'
 import { CalibrationWizard } from './components/Calibration/CalibrationWizard'
+import { ArmMotionRecorder } from './components/ArmTracking/ArmMotionRecorder'
+import { PieceMotionClassifier } from './components/ArmTracking/PieceMotionClassifier'
+import type { ArmLandmarks } from './hooks/useMediaPipePose'
 import { getNextPuzzle, getPuzzlesBySide, getRandomPuzzle, DIFFICULTY_COLOR } from './lib/puzzles'
 import type { Puzzle } from './lib/puzzles'
 
@@ -79,10 +84,11 @@ interface PuzzlePanelProps {
   isSolved: boolean
   isFailed: boolean
   onNext: () => void
+  onSkip: () => void
   onHint: () => void
   hint: string | null
 }
-const PuzzlePanel: React.FC<PuzzlePanelProps> = ({ puzzle, solvedCount, isSolved, isFailed, onNext, onHint, hint }) => (
+const PuzzlePanel: React.FC<PuzzlePanelProps> = ({ puzzle, solvedCount, isSolved, isFailed, onNext, onSkip, onHint, hint }) => (
   <div className="card" style={{ flex: 1 }}>
     <div className="card-title">🧩 Puzzle {solvedCount + 1}</div>
     <div style={{ marginBottom: 10 }}>
@@ -134,20 +140,42 @@ const PuzzlePanel: React.FC<PuzzlePanelProps> = ({ puzzle, solvedCount, isSolved
       </div>
     )}
     {!isSolved && (
-      <button className="btn btn-ghost" style={{ width: '100%', fontSize: '0.78rem' }} onClick={onHint}>
-        💡 Hint
-      </button>
+      <div style={{ display: 'grid', gap: 6 }}>
+        <button className="btn btn-ghost" style={{ width: '100%', fontSize: '0.78rem' }} onClick={onHint}>
+          💡 Hint
+        </button>
+        <button className="btn btn-ghost" style={{ width: '100%', fontSize: '0.78rem' }} onClick={onSkip}>
+          ⏭ Skip Puzzle
+        </button>
+      </div>
     )}
   </div>
 )
 
 // ─── Main Game Screen ─────────────────────────────────────────────────────────
 const GameScreen: React.FC = () => {
-  const { game, gestureState, gameMode, playerSide, setAppScreen, stockfish, triggerFlash, setStockfish } = useGameStore()
+  const {
+    game,
+    gestureState,
+    gameMode,
+    playerSide,
+    setAppScreen,
+    stockfish,
+    triggerFlash,
+    setStockfish,
+    armMismatch,
+    armModeEnabled,
+    setArmDetection,
+    setArmMismatch,
+    setArmDestinationSquare,
+    setRecordingTrajectory,
+  } = useGameStore()
   const { selectSquare, makeMove, makeMoveFromUci, resetGame: resetChess, loadFen } = useChessEngine()
   const { getBestMove, newGame } = useStockfish()
+  const armMotion = useArmMotion()
   const boardRef = useRef<HTMLDivElement>(null)
   const [landmarks, setLandmarks] = useState<NormalizedLandmark[] | null>(null)
+  const [armLandmarks, setArmLandmarks] = useState<ArmLandmarks | null>(null)
   const prevBestMoveRef = useRef<string | null>(null)
   const initializedRef = useRef(false)
   const puzzleSide = playerSide === 'white' ? 'w' : 'b'
@@ -160,6 +188,22 @@ const GameScreen: React.FC = () => {
   const [puzzleFailed, setPuzzleFailed] = useState(false)
   const [puzzleHint, setPuzzleHint] = useState<string | null>(null)
   const puzzleMoveIndexRef = useRef(0)
+
+  useEffect(() => {
+    setArmDetection(null, 0)
+    setArmMismatch(false)
+    setArmDestinationSquare(null)
+    setRecordingTrajectory(false)
+  }, [gameMode, armModeEnabled, setArmDetection, setArmMismatch, setArmDestinationSquare, setRecordingTrajectory])
+
+  useEffect(() => {
+    return () => {
+      setArmDetection(null, 0)
+      setArmMismatch(false)
+      setArmDestinationSquare(null)
+      setRecordingTrajectory(false)
+    }
+  }, [setArmDetection, setArmMismatch, setArmDestinationSquare, setRecordingTrajectory])
 
   const loadPuzzle = useCallback((puzzle: Puzzle) => {
     setPuzzleSolved(false)
@@ -194,6 +238,11 @@ const GameScreen: React.FC = () => {
   const handleNextPuzzle = useCallback(() => {
     const next = getNextPuzzle(currentPuzzle.id, puzzleSide)
     setPuzzleSolvedCount(c => c + 1)
+    loadPuzzle(next)
+  }, [currentPuzzle, loadPuzzle, puzzleSide])
+
+  const handleSkipPuzzle = useCallback(() => {
+    const next = getNextPuzzle(currentPuzzle.id, puzzleSide)
     loadPuzzle(next)
   }, [currentPuzzle, loadPuzzle, puzzleSide])
 
@@ -307,6 +356,22 @@ const GameScreen: React.FC = () => {
         <span className="text-muted text-sm" style={{ marginLeft: 8 }}>
           Playing as {playerSide === 'white' ? '⬜ White' : '⬛ Black'}
         </span>
+        {/* Arm mode mismatch warning in header */}
+        {armModeEnabled && armMismatch && (
+          <span style={{
+            marginLeft: 12,
+            padding: '3px 10px',
+            borderRadius: 8,
+            background: 'rgba(239,68,68,0.15)',
+            border: '1px solid rgba(239,68,68,0.4)',
+            color: '#ef4444',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            animation: 'fadeIn 0.2s ease',
+          }}>
+            ⚠️ Wrong arm pattern
+          </span>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost" style={{ fontSize: '0.78rem', padding: '6px 12px' }}
             onClick={() => setAppScreen('calibration')}>
@@ -327,7 +392,17 @@ const GameScreen: React.FC = () => {
       <aside className="app-sidebar">
         <div className="card">
           <div className="card-title">Camera</div>
-          <CameraFeed onLandmarks={setLandmarks} enabled />
+          {/* Camera with arm tracking classifer overlay */}
+          <div style={{ position: 'relative' }}>
+            <CameraFeed
+              onLandmarks={setLandmarks}
+              onPoseLandmarks={setArmLandmarks}
+              enabled
+            />
+            {armModeEnabled && (
+              <PieceMotionClassifier getTrajectory={armMotion.getTrajectory} width={640} height={480} />
+            )}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6,
             marginTop: 8, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
             <div className={`state-dot ${gestureState}`}
@@ -358,18 +433,29 @@ const GameScreen: React.FC = () => {
             isSolved={puzzleSolved}
             isFailed={puzzleFailed}
             onNext={handleNextPuzzle}
+            onSkip={handleSkipPuzzle}
             onHint={handlePuzzleHint}
             hint={puzzleHint}
           />
         ) : (
           <MoveHistory />
         )}
+        {/* Phase 1.5 arm mode panel */}
+        <ArmModePanel />
         <div className="card">
           <div className="card-title">Controls</div>
           <div className="text-sm text-muted" style={{ lineHeight: 2 }}>
             👆 <strong>Point</strong> to navigate<br />
             ✊ <strong>Pinch</strong> to grab a piece<br />
             ✋ <strong>Release</strong> to drop<br />
+            ↩️ <strong>Release on origin</strong> to cancel selection<br />
+            {armModeEnabled && (
+              <>
+                🐴 <strong>L-swing</strong> = Knight<br />
+                ♝ <strong>Diagonal</strong> = Bishop<br />
+                ♜ <strong>Straight</strong> = Rook<br />
+              </>
+            )}
           </div>
         </div>
         {gameMode === 'freegame' && (
@@ -392,6 +478,9 @@ const GameScreen: React.FC = () => {
         )}
       </aside>
 
+      {/* Phase 1.5 — ArmMotionRecorder (renderless, must be inside GameScreen) */}
+      <ArmMotionRecorder arms={armLandmarks} armMotion={armMotion} />
+
       <HandCursor />
     </div>
   )
@@ -407,7 +496,7 @@ export default function App() {
   if (appScreen === 'calibration') {
     return (
       <>
-        <CameraFeed onLandmarks={setCalLandmarks} enabled />
+        <CameraFeed onLandmarks={setCalLandmarks} enabled showControls={false} />
         <CalibrationWizard
           landmarks={calLandmarks}
           onComplete={() => setAppScreen('game')}

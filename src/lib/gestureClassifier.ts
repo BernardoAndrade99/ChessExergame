@@ -32,7 +32,7 @@ export interface GestureResult {
   palmCenter: { x: number; y: number }
 }
 
-const PINCH_THRESHOLD = 0.055
+const PINCH_THRESHOLD = 0.065
 
 function euclidean2D(a: NormalizedLandmark, b: NormalizedLandmark): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)

@@ -8,12 +8,17 @@ interface UseMediaPipeHandsOptions {
   enabled?: boolean
 }
 
-export function useMediaPipeHands({ videoRef, onResults, enabled = true }: UseMediaPipeHandsOptions) {
+export function useMediaPipeHands({
+  videoRef,
+  onResults,
+  enabled = true,
+}: UseMediaPipeHandsOptions) {
   const handLandmarkerRef = useRef<HandLandmarker | null>(null)
   const animFrameRef = useRef<number>(0)
   const isRunningRef = useRef(false)
   const fpsRef = useRef(0)
   const lastFrameTimeRef = useRef(0)
+  const activeHandIndexRef = useRef(0)
 
   useEffect(() => {
     if (!enabled) return
@@ -26,9 +31,9 @@ export function useMediaPipeHands({ videoRef, onResults, enabled = true }: UseMe
       const video = videoRef.current
       const landmarker = handLandmarkerRef.current
 
-      if (video && landmarker && video.readyState >= 2) {
-        const now = performance.now()
-        const result = landmarker.detectForVideo(video, now)
+        if (video && landmarker && video.readyState >= 2) {
+          const now = performance.now()
+          const result = landmarker.detectForVideo(video, now)
 
         // FPS calculation
         if (lastFrameTimeRef.current > 0) {
@@ -37,8 +42,43 @@ export function useMediaPipeHands({ videoRef, onResults, enabled = true }: UseMe
         lastFrameTimeRef.current = now
 
         if (result.landmarks && result.landmarks.length > 0) {
-          onResults(result.landmarks[0], result.worldLandmarks?.[0])
+          // Interaction is controlled by the "grabbing hand" (pinched hand).
+          // This is robust against handedness flips in mirrored/selfie mode.
+          let handIdx = activeHandIndexRef.current
+          const pinchDistances: number[] = []
+          let bestPinch = Number.POSITIVE_INFINITY
+          let bestPinchIdx = 0
+          for (let i = 0; i < result.landmarks.length; i++) {
+            const lm = result.landmarks[i]
+            const dx = lm[4].x - lm[8].x
+            const dy = lm[4].y - lm[8].y
+            const pinch = Math.sqrt(dx * dx + dy * dy)
+            pinchDistances.push(pinch)
+            if (pinch < bestPinch) {
+              bestPinch = pinch
+              bestPinchIdx = i
+            }
+          }
+
+          const activePinch = pinchDistances[handIdx] ?? Number.POSITIVE_INFINITY
+          // Keep current hand while it's still plausibly pinching (hysteresis),
+          // otherwise switch to strongest pinch hand.
+          if (activePinch < 0.09) {
+            // keep current hand
+          } else if (bestPinch < 0.075) {
+            handIdx = bestPinchIdx
+          } else {
+            const rightIdx = result.handedness?.findIndex((hands) =>
+              hands.some((h) => h.categoryName?.toLowerCase() === 'right'),
+            ) ?? -1
+            if (rightIdx >= 0) handIdx = rightIdx
+            if (handIdx >= result.landmarks.length) handIdx = 0
+          }
+
+          activeHandIndexRef.current = handIdx
+          onResults(result.landmarks[handIdx], result.worldLandmarks?.[handIdx])
         } else {
+          activeHandIndexRef.current = 0
           onResults(null)
         }
       }
@@ -59,7 +99,7 @@ export function useMediaPipeHands({ videoRef, onResults, enabled = true }: UseMe
             delegate: 'GPU',
           },
           runningMode: 'VIDEO',
-          numHands: 1,
+          numHands: 2,
           minHandDetectionConfidence: 0.6,
           minHandPresenceConfidence: 0.5,
           minTrackingConfidence: 0.5,
@@ -71,7 +111,11 @@ export function useMediaPipeHands({ videoRef, onResults, enabled = true }: UseMe
 
         // Start webcam
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480, facingMode: 'user' },
+          video: {
+            facingMode: 'user',
+            width: { ideal: 960 },
+            height: { ideal: 720 },
+          },
         })
 
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return }

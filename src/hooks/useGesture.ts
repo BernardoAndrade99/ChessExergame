@@ -5,19 +5,26 @@ import { KalmanFilter2D } from '../lib/kalmanFilter'
 import { coordsToPixel } from '../lib/coordinateMapper'
 import { useGameStore } from '../store/gameStore'
 
-const DEBOUNCE_FRAMES = 4  // slightly more debounce for stability
+const DEBOUNCE_FRAMES = 3
 
 export function useGesture(
   landmarks: NormalizedLandmark[] | null,
   containerRef: React.RefObject<HTMLElement>
 ) {
-  const { calibration, setCursor, setGestureState, gestureState, playerSide } = useGameStore()
-  // Higher measurement noise R = more smoothing, less jitter (at cost of slight lag)
-  const kalman = useRef(new KalmanFilter2D(0.005, 0.40))
+  const { calibration, setCursor, setGestureState, gestureState, playerSide, armModeEnabled } = useGameStore()
+  const kalman = useRef(new KalmanFilter2D(0.005, 0.30))
   const pinchBuffer = useRef(0)
   const releaseBuffer = useRef(0)
-  const lastSquareRef = useRef<string | null>(null)  // dead-zone tracking
+  const lastSquareRef = useRef<string | null>(null)
   const grabbedSquareRef = useRef<string | null>(null)
+
+  // ── Read arm destination without adding it to the dep array ────────────
+  // Critical: if we read armDestinationSquare from the hook's reactive
+  // destructure, it appears in the dep array and re-runs this effect on
+  // every store write from ArmMotionRecorder, resetting the release buffer
+  // mid-grab and breaking pinch detection. Instead we call getState()
+  // directly inside the effect — always fresh, never causes re-renders.
+
 
   const onSelectSquare = useRef<((sq: string) => boolean) | null>(null)
   const onDropSquare = useRef<((from: string, to: string) => void) | null>(null)
@@ -40,15 +47,10 @@ export function useGesture(
 
     const gesture = classifyGesture(landmarks)
 
-    // Smooth index fingertip with higher R for less jitter
     const raw = gesture.indexTip
     const smoothed = kalman.current.update(raw.x, raw.y)
-
-    // Map hand to full screen cursor position
     const { px, py } = coordsToPixel(smoothed.x, smoothed.y, window.innerWidth, window.innerHeight)
 
-    // Compute hovered square from SCREEN position relative to the board element.
-    // This ensures cursor and square are always in sync regardless of calibration.
     let squareName: string | null = null
     const boardEl = document.querySelector('[data-board]')
     if (boardEl) {
@@ -61,8 +63,6 @@ export function useGesture(
         const boardCol = playerSide === 'black' ? 7 - screenCol : screenCol
         const boardRow = playerSide === 'black' ? 7 - screenRow : screenRow
         const candidate = `${'abcdefgh'[boardCol]}${8 - boardRow}`
-        // Dead-zone: only update square if cursor moved noticeably (> ~0.6 of a square width)
-        // This prevents flickering at square boundaries
         if (candidate !== lastSquareRef.current) {
           const sqW = r.width / 8
           const sqH = r.height / 8
@@ -70,7 +70,6 @@ export function useGesture(
           const prevRow = lastSquareRef.current ? 8 - parseInt(lastSquareRef.current[1]) : -99
           const dx = Math.abs(boardCol - prevCol) * sqW
           const dy = Math.abs(boardRow - prevRow) * sqH
-          // Accept if moved at least half a square in either axis
           if (dx >= sqW * 0.5 || dy >= sqH * 0.5 || lastSquareRef.current === null) {
             lastSquareRef.current = candidate
           }
@@ -81,9 +80,13 @@ export function useGesture(
       }
     }
 
+    if (armModeEnabled && gestureState === 'grabbing') {
+      const armDest = useGameStore.getState().armDestinationSquare
+      if (armDest) squareName = armDest
+    }
+
     setCursor({ x: px, y: py, squareName, visible: true })
 
-    // Pinch debounce (3 consecutive frames)
     if (gesture.isPinching) {
       pinchBuffer.current = Math.min(pinchBuffer.current + 1, DEBOUNCE_FRAMES + 1)
       releaseBuffer.current = 0
@@ -95,7 +98,6 @@ export function useGesture(
     const stablePinch   = pinchBuffer.current   >= DEBOUNCE_FRAMES
     const stableRelease = releaseBuffer.current >= DEBOUNCE_FRAMES
 
-    // State machine
     if (gestureState === 'idle' || gestureState === 'hovering') {
       setGestureState(squareName ? 'hovering' : 'idle')
 
@@ -108,14 +110,35 @@ export function useGesture(
         }
       }
     } else if (gestureState === 'grabbing') {
-      if (stableRelease && grabbedSquareRef.current && squareName && onDropSquare.current) {
-        onDropSquare.current(grabbedSquareRef.current, squareName)
+      // Arm mode: left-wrist endpoint is the drop target (no cursor needed)
+      // Hand mode: original behaviour — cursor must be over a valid square
+      const armDest = armModeEnabled ? useGameStore.getState().armDestinationSquare : null
+      const dropTarget = armDest ?? squareName
+
+      if (stableRelease && grabbedSquareRef.current && dropTarget) {
+        // Release over origin square = cancel selection (no move)
+        if (dropTarget === grabbedSquareRef.current) {
+          useGameStore.getState().setGame({ selectedSquare: null, legalTargets: [] })
+          if (armModeEnabled) {
+            useGameStore.getState().setArmDestinationSquare(null)
+          }
+          grabbedSquareRef.current = null
+          setGestureState('idle')
+          releaseBuffer.current = 0
+          return
+        }
+
+        if (!onDropSquare.current) return
+        onDropSquare.current(grabbedSquareRef.current, dropTarget)
+        if (armModeEnabled) {
+          useGameStore.getState().setArmDestinationSquare(null)
+        }
         grabbedSquareRef.current = null
         setGestureState('idle')
         releaseBuffer.current = 0
       }
     }
-  }, [landmarks, calibration, gestureState, setCursor, setGestureState, containerRef, playerSide])
+  }, [landmarks, calibration, gestureState, setCursor, setGestureState, containerRef, playerSide, armModeEnabled])
 
   return { registerHandlers }
 }
