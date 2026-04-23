@@ -250,8 +250,10 @@ html, body, #root {
 
 /* ─── Pieces ─────────────────────────────────────────────────────── */
 .piece {
-  font-size: clamp(36px, 6.5vh, 58px);
-  line-height: 1;
+  width: clamp(36px, 6.5vh, 58px);
+  height: clamp(36px, 6.5vh, 58px);
+  object-fit: contain;
+  user-select: none;
   transition: transform 0.12s ease, filter 0.12s ease;
   pointer-events: none;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
