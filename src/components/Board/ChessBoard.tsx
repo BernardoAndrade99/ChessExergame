@@ -4,7 +4,7 @@ import { BoardSquare } from './BoardSquare'
 import { useGameStore } from '../../store/gameStore'
 
 export const ChessBoard: React.FC = () => {
-  const { game, cursor, gestureState, playerSide } = useGameStore()
+  const { game, cursor, gestureState, playerSide, handGesturePieceType } = useGameStore()
   const boardRef = useRef<HTMLDivElement>(null)
 
   const flipped = playerSide === 'black'
@@ -12,6 +12,19 @@ export const ChessBoard: React.FC = () => {
   // Parse the current FEN to get piece positions
   const chess = new Chess(game.fen)
   const board = chess.board() // 8x8 array [row][col], row 0 = rank 8
+
+  // Build set of knight squares to highlight when L-shape gesture is active
+  const knightHighlights = new Set<string>()
+  if (handGesturePieceType === 'n') {
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const p = board[r][c]
+        if (p && p.type === 'n' && p.color === game.turn) {
+          knightHighlights.add(`${'abcdefgh'[c]}${8 - r}`)
+        }
+      }
+    }
+  }
 
   const squares: React.ReactNode[] = []
 
@@ -34,6 +47,7 @@ export const ChessBoard: React.FC = () => {
         (game.lastMove.from === squareName || game.lastMove.to === squareName))
       const isCheck = game.isCheck && piece?.type === 'k' &&
         piece?.color === game.turn
+      const isKnightHighlight = knightHighlights.has(squareName)
 
       squares.push(
         <BoardSquare
@@ -52,6 +66,7 @@ export const ChessBoard: React.FC = () => {
           showRankLabel={col === 0}
           showFileLabel={row === 7}
           isGrabbed={gestureState === 'grabbing'}
+          isKnightHighlight={isKnightHighlight}
         />
       )
     }

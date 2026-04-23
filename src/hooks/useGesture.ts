@@ -1,11 +1,76 @@
 import { useEffect, useRef, useCallback } from 'react'
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
+import { Chess } from 'chess.js'
 import { classifyGesture } from '../lib/gestureClassifier'
 import { KalmanFilter2D } from '../lib/kalmanFilter'
 import { coordsToPixel } from '../lib/coordinateMapper'
 import { useGameStore } from '../store/gameStore'
 
 const DEBOUNCE_FRAMES = 3
+const LSHAPE_FRAMES = 5    // frames of stable L-shape before activating
+const FLICK_THRESHOLD = 0.07  // normalized palm displacement to trigger knight selection
+
+/**
+ * Given a flick direction in display space (x mirrored, positive = screen-right/h-file),
+ * find the current player's knight whose board position best matches that direction.
+ */
+function findKnightByFlick(
+  dx: number,
+  dy: number,
+  fen: string,
+  turn: 'w' | 'b',
+  playerSide: 'white' | 'black'
+): string | null {
+  const chess = new Chess(fen)
+  const knights: string[] = []
+  chess.board().forEach((rankArr, rowIdx) => {
+    rankArr.forEach((piece, colIdx) => {
+      if (piece && piece.type === 'n' && piece.color === turn) {
+        knights.push(`${'abcdefgh'[colIdx]}${8 - rowIdx}`)
+      }
+    })
+  })
+
+  if (knights.length === 0) return null
+  if (knights.length === 1) return knights[0]
+
+  const flickMag = Math.sqrt(dx * dx + dy * dy)
+  if (flickMag < 0.001) return null
+  const fdx = dx / flickMag
+  const fdy = dy / flickMag
+
+  // Board center: between d/e files (col 3.5) and ranks 4/5 (row 3.5)
+  const centerCol = 3.5
+  const centerRow = 3.5
+
+  let best: string | null = null
+  let bestDot = -Infinity
+
+  for (const sq of knights) {
+    const col = 'abcdefgh'.indexOf(sq[0])
+    const row = 8 - parseInt(sq[1])  // rank 1 → row 7, rank 8 → row 0
+
+    // Direction from board center to this knight in display space
+    let boardDx = col - centerCol   // positive = toward h-file (right on screen)
+    let boardDy = row - centerRow   // positive = toward rank 1 (down on screen)
+
+    if (playerSide === 'black') {
+      boardDx = -boardDx
+      boardDy = -boardDy
+    }
+
+    const mag = Math.sqrt(boardDx * boardDx + boardDy * boardDy)
+    if (mag < 0.01) continue
+
+    const dot = fdx * (boardDx / mag) + fdy * (boardDy / mag)
+    if (dot > bestDot) {
+      bestDot = dot
+      best = sq
+    }
+  }
+
+  return best
+}
 
 export function useGesture(
   landmarks: NormalizedLandmark[] | null,
@@ -15,6 +80,9 @@ export function useGesture(
   const kalman = useRef(new KalmanFilter2D(0.005, 0.30))
   const pinchBuffer = useRef(0)
   const releaseBuffer = useRef(0)
+  const lShapeBuffer = useRef(0)
+  const lShapeAnchor = useRef<{ x: number; y: number } | null>(null)
+  const flickFired = useRef(false)
   const lastSquareRef = useRef<string | null>(null)
   const grabbedSquareRef = useRef<string | null>(null)
 
@@ -80,10 +148,57 @@ export function useGesture(
       }
     }
 
-    if (armModeEnabled && gestureState === 'grabbing') {
-      const armDest = useGameStore.getState().armDestinationSquare
-      if (armDest) squareName = armDest
+    // ── Arm mode: L-shape gesture for knight selection, no cursor/pinch ──
+    if (armModeEnabled) {
+      setCursor({ visible: false })
+
+      if (gesture.isLShape) {
+        lShapeBuffer.current = Math.min(lShapeBuffer.current + 1, LSHAPE_FRAMES + 1)
+      } else {
+        lShapeBuffer.current = 0
+        lShapeAnchor.current = null
+        flickFired.current = false
+        useGameStore.getState().setHandGesturePieceType(null)
+      }
+
+      if (lShapeBuffer.current >= LSHAPE_FRAMES) {
+        useGameStore.getState().setHandGesturePieceType('n')
+
+        const palm = gesture.palmCenter
+        if (!lShapeAnchor.current) {
+          lShapeAnchor.current = { x: palm.x, y: palm.y }
+        }
+
+        if (!flickFired.current) {
+          const dx = -(palm.x - lShapeAnchor.current.x)
+          const dy = palm.y - lShapeAnchor.current.y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+
+          if (dist > FLICK_THRESHOLD) {
+            flickFired.current = true
+            const { fen, turn } = useGameStore.getState().game
+            const targetSq = findKnightByFlick(dx, dy, fen, turn, playerSide)
+
+            if (targetSq && onSelectSquare.current) {
+              const selected = onSelectSquare.current(targetSq)
+              if (selected) {
+                grabbedSquareRef.current = targetSq
+                setGestureState('grabbing')
+              }
+            }
+            useGameStore.getState().setHandGesturePieceType(null)
+          }
+        }
+      }
+      return
     }
+
+    // ── Normal pinch/cursor mode ──────────────────────────────────────────
+    // Ensure L-shape state is clean when arm mode is off
+    lShapeBuffer.current = 0
+    lShapeAnchor.current = null
+    flickFired.current = false
+    useGameStore.getState().setHandGesturePieceType(null)
 
     setCursor({ x: px, y: py, squareName, visible: true })
 
@@ -110,10 +225,7 @@ export function useGesture(
         }
       }
     } else if (gestureState === 'grabbing') {
-      // Arm mode: left-wrist endpoint is the drop target (no cursor needed)
-      // Hand mode: original behaviour — cursor must be over a valid square
-      const armDest = armModeEnabled ? useGameStore.getState().armDestinationSquare : null
-      const dropTarget = armDest ?? squareName
+      const dropTarget = squareName
 
       if (stableRelease && grabbedSquareRef.current && dropTarget) {
         // Release over origin square = cancel selection (no move)

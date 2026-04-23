@@ -28,6 +28,7 @@ export interface GestureResult {
   isPinching: boolean
   pinchDistance: number
   fingerStates: FingerStates
+  isLShape: boolean
   indexTip: { x: number; y: number; z: number }
   palmCenter: { x: number; y: number }
 }
@@ -48,6 +49,7 @@ export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult 
       isPinching: false,
       pinchDistance: 1,
       fingerStates: { thumb: false, index: false, middle: false, ring: false, pinky: false },
+      isLShape: false,
       indexTip: { x: 0.5, y: 0.5, z: 0 },
       palmCenter: { x: 0.5, y: 0.5 },
     }
@@ -83,10 +85,18 @@ export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult 
   const thumbExtended = Math.abs(thumbTip.x - thumbMcp.x) > 0.04
   fingerStates.thumb = thumbExtended
 
+  // L-shape: thumb extended sideways + index pointing up + other three fingers curled
+  const isLShape = thumbExtended &&
+    fingerStates.index &&
+    !fingerStates.middle &&
+    !fingerStates.ring &&
+    !fingerStates.pinky
+
   return {
     isPinching,
     pinchDistance,
     fingerStates,
+    isLShape,
     indexTip: { x: indexTip.x, y: indexTip.y, z: indexTip.z },
     palmCenter,
   }

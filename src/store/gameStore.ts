@@ -83,6 +83,10 @@ interface ChessMoveStore {
   setArmMismatch: (v: boolean) => void
   armDestinationSquare: string | null      // destination computed from left-wrist endpoint
   setArmDestinationSquare: (sq: string | null) => void
+
+  // Phase 2 — Hand gesture piece-type selection
+  handGesturePieceType: string | null      // 'n' when L-shape detected, null otherwise
+  setHandGesturePieceType: (t: string | null) => void
 }
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -150,4 +154,7 @@ export const useGameStore = create<ChessMoveStore>((set) => ({
   setArmMismatch: (armMismatch) => set({ armMismatch }),
   armDestinationSquare: null,
   setArmDestinationSquare: (armDestinationSquare) => set({ armDestinationSquare }),
+
+  handGesturePieceType: null,
+  setHandGesturePieceType: (handGesturePieceType) => set({ handGesturePieceType }),
 }))

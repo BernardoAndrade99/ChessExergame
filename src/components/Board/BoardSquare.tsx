@@ -17,11 +17,13 @@ interface BoardSquareProps {
   showRankLabel: boolean
   showFileLabel: boolean
   isGrabbed: boolean
+  isKnightHighlight: boolean
 }
 
 export const BoardSquare: React.FC<BoardSquareProps> = ({
   squareName, piece, isLight, isSelected, isLegalTarget,
   isHovered, isDropTarget, isLastMove, isCheck, showRankLabel, showFileLabel, isGrabbed,
+  isKnightHighlight,
 }) => {
   const { flashSquare, flashType } = useGameStore()
   const isFlashing = flashSquare === squareName
@@ -72,6 +74,17 @@ export const BoardSquare: React.FC<BoardSquareProps> = ({
             pointerEvents: 'none',
           }}
         />
+      )}
+
+      {isKnightHighlight && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          border: '3px solid rgba(139,92,246,0.85)',
+          borderRadius: '4px',
+          boxShadow: 'inset 0 0 10px rgba(139,92,246,0.4)',
+          pointerEvents: 'none',
+        }} />
       )}
     </div>
   )

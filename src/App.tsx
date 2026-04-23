@@ -4,7 +4,6 @@ import { useGameStore } from './store/gameStore'
 import { useChessEngine } from './hooks/useChessEngine'
 import { useStockfish } from './hooks/useStockfish'
 import { useGesture } from './hooks/useGesture'
-import { useArmMotion } from './hooks/useArmMotion'
 import { ChessBoard } from './components/Board/ChessBoard'
 import { CameraFeed } from './components/Vision/CameraFeed'
 import { HandCursor } from './components/Cursor/HandCursor'
@@ -13,9 +12,6 @@ import { MoveHistory } from './components/HUD/MoveHistory'
 import { StatusOverlay } from './components/HUD/StatusOverlay'
 import { ArmModePanel } from './components/HUD/ArmModePanel'
 import { CalibrationWizard } from './components/Calibration/CalibrationWizard'
-import { ArmMotionRecorder } from './components/ArmTracking/ArmMotionRecorder'
-import { PieceMotionClassifier } from './components/ArmTracking/PieceMotionClassifier'
-import type { ArmLandmarks } from './hooks/useMediaPipePose'
 import { getNextPuzzle, getPuzzlesBySide, getRandomPuzzle, DIFFICULTY_COLOR } from './lib/puzzles'
 import type { Puzzle } from './lib/puzzles'
 
@@ -163,19 +159,12 @@ const GameScreen: React.FC = () => {
     stockfish,
     triggerFlash,
     setStockfish,
-    armMismatch,
     armModeEnabled,
-    setArmDetection,
-    setArmMismatch,
-    setArmDestinationSquare,
-    setRecordingTrajectory,
   } = useGameStore()
   const { selectSquare, makeMove, makeMoveFromUci, resetGame: resetChess, loadFen } = useChessEngine()
   const { getBestMove, newGame } = useStockfish()
-  const armMotion = useArmMotion()
   const boardRef = useRef<HTMLDivElement>(null)
   const [landmarks, setLandmarks] = useState<NormalizedLandmark[] | null>(null)
-  const [armLandmarks, setArmLandmarks] = useState<ArmLandmarks | null>(null)
   const prevBestMoveRef = useRef<string | null>(null)
   const initializedRef = useRef(false)
   const puzzleSide = playerSide === 'white' ? 'w' : 'b'
@@ -188,22 +177,6 @@ const GameScreen: React.FC = () => {
   const [puzzleFailed, setPuzzleFailed] = useState(false)
   const [puzzleHint, setPuzzleHint] = useState<string | null>(null)
   const puzzleMoveIndexRef = useRef(0)
-
-  useEffect(() => {
-    setArmDetection(null, 0)
-    setArmMismatch(false)
-    setArmDestinationSquare(null)
-    setRecordingTrajectory(false)
-  }, [gameMode, armModeEnabled, setArmDetection, setArmMismatch, setArmDestinationSquare, setRecordingTrajectory])
-
-  useEffect(() => {
-    return () => {
-      setArmDetection(null, 0)
-      setArmMismatch(false)
-      setArmDestinationSquare(null)
-      setRecordingTrajectory(false)
-    }
-  }, [setArmDetection, setArmMismatch, setArmDestinationSquare, setRecordingTrajectory])
 
   const loadPuzzle = useCallback((puzzle: Puzzle) => {
     setPuzzleSolved(false)
@@ -357,21 +330,6 @@ const GameScreen: React.FC = () => {
           Playing as {playerSide === 'white' ? '⬜ White' : '⬛ Black'}
         </span>
         {/* Arm mode mismatch warning in header */}
-        {armModeEnabled && armMismatch && (
-          <span style={{
-            marginLeft: 12,
-            padding: '3px 10px',
-            borderRadius: 8,
-            background: 'rgba(239,68,68,0.15)',
-            border: '1px solid rgba(239,68,68,0.4)',
-            color: '#ef4444',
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            animation: 'fadeIn 0.2s ease',
-          }}>
-            ⚠️ Wrong arm pattern
-          </span>
-        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost" style={{ fontSize: '0.78rem', padding: '6px 12px' }}
             onClick={() => setAppScreen('calibration')}>
@@ -396,12 +354,8 @@ const GameScreen: React.FC = () => {
           <div style={{ position: 'relative' }}>
             <CameraFeed
               onLandmarks={setLandmarks}
-              onPoseLandmarks={setArmLandmarks}
               enabled
             />
-            {armModeEnabled && (
-              <PieceMotionClassifier getTrajectory={armMotion.getTrajectory} width={640} height={480} />
-            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6,
             marginTop: 8, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
@@ -442,18 +396,21 @@ const GameScreen: React.FC = () => {
         )}
         {/* Phase 1.5 arm mode panel */}
         <ArmModePanel />
-        <div className="card">
+          <div className="card">
           <div className="card-title">Controls</div>
           <div className="text-sm text-muted" style={{ lineHeight: 2 }}>
-            👆 <strong>Point</strong> to navigate<br />
-            ✊ <strong>Pinch</strong> to grab a piece<br />
-            ✋ <strong>Release</strong> to drop<br />
-            ↩️ <strong>Release on origin</strong> to cancel selection<br />
-            {armModeEnabled && (
+            {armModeEnabled ? (
               <>
-                🐴 <strong>L-swing</strong> = Knight<br />
-                ♝ <strong>Diagonal</strong> = Bishop<br />
-                ♜ <strong>Straight</strong> = Rook<br />
+                🤙 <strong>Hold L</strong> to highlight knights<br />
+                👉 <strong>Flick</strong> toward one to select it<br />
+                ↩️ <strong>Pinch cursor disabled</strong> in this mode<br />
+              </>
+            ) : (
+              <>
+                👆 <strong>Point</strong> to navigate<br />
+                ✊ <strong>Pinch</strong> to grab a piece<br />
+                ✋ <strong>Release</strong> to drop<br />
+                ↩️ <strong>Release on origin</strong> to cancel selection<br />
               </>
             )}
           </div>
@@ -478,8 +435,7 @@ const GameScreen: React.FC = () => {
         )}
       </aside>
 
-      {/* Phase 1.5 — ArmMotionRecorder (renderless, must be inside GameScreen) */}
-      <ArmMotionRecorder arms={armLandmarks} armMotion={armMotion} />
+      {/* Gesture mode renderless hook results go through useGesture directly */}
 
       <HandCursor />
     </div>
