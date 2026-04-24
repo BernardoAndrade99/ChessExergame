@@ -171,14 +171,14 @@ export function useGesture(
 
     // ── Arm mode: hand gestures select pieces, no cursor/pinch ──
     if (armModeEnabled) {
-      setCursor({ visible: false })
+      // Clear squareName so stale cursor position never triggers isDropTarget/isHovered
+      setCursor({ visible: false, squareName: null })
 
       const detectedType = detectHandGesture(gesture)
 
       if (detectedType) {
         const cur = activeGesture.current
         if (!cur || cur.pieceType !== detectedType) {
-          // New gesture — reset state
           activeGesture.current = { pieceType: detectedType, buffer: 1, anchor: null, fired: false }
         } else {
           cur.buffer = Math.min(cur.buffer + 1, GESTURE_FRAMES + 1)
@@ -191,24 +191,47 @@ export function useGesture(
       }
 
       const cur = activeGesture.current
-      if (cur && cur.buffer >= GESTURE_FRAMES) {
-        useGameStore.getState().setHandGesturePieceType(cur.pieceType)
+      if (cur && cur.buffer >= GESTURE_FRAMES && !cur.fired) {
+        const { fen, turn } = useGameStore.getState().game
+        const chess = new Chess(fen)
+        const matchingSquares: string[] = []
+        chess.board().forEach((rankArr, rowIdx) => {
+          rankArr.forEach((piece, colIdx) => {
+            if (piece && piece.type === cur.pieceType && piece.color === turn) {
+              matchingSquares.push(`${'abcdefgh'[colIdx]}${8 - rowIdx}`)
+            }
+          })
+        })
 
-        const palm = gesture.palmCenter
-        if (!cur.anchor) {
-          cur.anchor = { x: palm.x, y: palm.y }
-        }
+        if (matchingSquares.length === 1) {
+          // Only one piece of this type — auto-select immediately without a flick
+          cur.fired = true
+          const targetSq = matchingSquares[0]
+          if (onSelectSquare.current) {
+            const selected = onSelectSquare.current(targetSq)
+            if (selected) {
+              grabbedSquareRef.current = targetSq
+              setGestureState('grabbing')
+            }
+          }
+          activeGesture.current = null
+          useGameStore.getState().setHandGesturePieceType(null)
+        } else if (matchingSquares.length > 1) {
+          // Multiple pieces — highlight them and wait for a directional flick
+          useGameStore.getState().setHandGesturePieceType(cur.pieceType)
 
-        if (!cur.fired) {
+          const palm = gesture.palmCenter
+          if (!cur.anchor) {
+            cur.anchor = { x: palm.x, y: palm.y }
+          }
+
           const dx = -(palm.x - cur.anchor.x)
           const dy = palm.y - cur.anchor.y
           const dist = Math.sqrt(dx * dx + dy * dy)
 
           if (dist > FLICK_THRESHOLD) {
             cur.fired = true
-            const { fen, turn } = useGameStore.getState().game
             const targetSq = findPieceByFlick(cur.pieceType, dx, dy, fen, turn, playerSide)
-
             if (targetSq && onSelectSquare.current) {
               const selected = onSelectSquare.current(targetSq)
               if (selected) {
@@ -216,6 +239,7 @@ export function useGesture(
                 setGestureState('grabbing')
               }
             }
+            activeGesture.current = null
             useGameStore.getState().setHandGesturePieceType(null)
           }
         }
