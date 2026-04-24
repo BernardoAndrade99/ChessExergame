@@ -84,12 +84,22 @@ export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult 
 
   const thumbExtended = Math.abs(thumbTip.x - thumbMcp.x) > 0.04
 
-  const isLShape = thumbExtended && fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
-  const isPeaceSign = !thumbExtended && fingerStates.index && fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
-  const isOneIndex  = !thumbExtended && fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
-  const isFist      = !thumbExtended && !fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
-  const isFourFingers = !thumbExtended && fingerStates.index && fingerStates.middle && fingerStates.ring && fingerStates.pinky
-  const isOpenPalm  = thumbExtended && fingerStates.index && fingerStates.middle && fingerStates.ring && fingerStates.pinky
+  // Finger spread: index-tip to pinky-tip distance, normalized by hand size (wrist→middle MCP).
+  // Together ≈ 0.4–0.55, spread wide ≈ 0.75–1.0+; threshold 0.65 gives a clear gap.
+  const handSize   = euclidean2D(landmarks[WRIST], landmarks[9])
+  const spreadDist = euclidean2D(landmarks[INDEX_TIP], landmarks[PINKY_TIP])
+  const isFingersSpread = handSize > 0.01 && (spreadDist / handSize) >= 0.65
+
+  const allFourFingers = fingerStates.index && fingerStates.middle && fingerStates.ring && fingerStates.pinky
+
+  const isLShape      = thumbExtended && fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  const isPeaceSign   = !thumbExtended && fingerStates.index && fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  const isOneIndex    = !thumbExtended && fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  const isFist        = !thumbExtended && !fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  // King:  four fingers extended, held together ("stop" hand)
+  const isFourFingers = allFourFingers && !isFingersSpread
+  // Queen: four fingers extended, spread wide
+  const isOpenPalm    = allFourFingers && isFingersSpread
 
   return {
     isPinching,

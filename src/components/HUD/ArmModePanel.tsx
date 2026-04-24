@@ -100,8 +100,8 @@ export const ArmModePanel: React.FC = () => {
             { emoji: '✌️', gesture: 'Peace sign (index + middle)', piece: 'Bishop' },
             { emoji: '☝️', gesture: 'One index up', piece: 'Pawn' },
             { emoji: '✊', gesture: 'Fist', piece: 'Rook' },
-            { emoji: '🖐', gesture: 'Four fingers (no thumb)', piece: 'King' },
-            { emoji: '✋', gesture: 'Open palm (all five)', piece: 'Queen' },
+            { emoji: '✋', gesture: 'Four fingers together (stop hand)', piece: 'King' },
+            { emoji: '🖐', gesture: 'Four fingers spread wide', piece: 'Queen' },
           ].map(({ emoji, gesture, piece }) => (
             <div key={piece} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{emoji}</span>
