@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
+import type { ArmLandmarks } from './useMediaPipePose'
 import { Chess } from 'chess.js'
 import { classifyGesture } from '../lib/gestureClassifier'
 import { KalmanFilter2D } from '../lib/kalmanFilter'
@@ -9,6 +10,16 @@ import { useGameStore } from '../store/gameStore'
 const DEBOUNCE_FRAMES = 3
 const GESTURE_FRAMES = 5      // stable frames before a hand gesture activates
 const FLICK_THRESHOLD = 0.07  // normalized palm displacement to trigger piece selection
+const CANCEL_FRAMES = 10      // ~165ms at 60fps of holding cancel pose
+
+/** Both wrists clearly above their respective shoulders = cancel selection. */
+function isCancelPose(arms: ArmLandmarks): boolean {
+  const RAISE_THRESHOLD = 0.10  // wrist must be 10% of frame above shoulder (MediaPipe y: smaller = higher)
+  return (
+    arms.leftWrist.y  < arms.leftShoulder.y  - RAISE_THRESHOLD &&
+    arms.rightWrist.y < arms.rightShoulder.y - RAISE_THRESHOLD
+  )
+}
 
 /**
  * Map a detected gesture to the piece type it represents.
@@ -76,6 +87,7 @@ function findPieceByFlick(
 
 export function useGesture(
   landmarks: NormalizedLandmark[] | null,
+  poseLandmarksRef: { current: ArmLandmarks | null },
   containerRef: React.RefObject<HTMLElement>
 ) {
   const { calibration, setCursor, setGestureState, gestureState, playerSide, armModeEnabled } = useGameStore()
@@ -92,6 +104,8 @@ export function useGesture(
   const noHandSince = useRef<number | null>(null)
   const lastSquareRef = useRef<string | null>(null)
   const grabbedSquareRef = useRef<string | null>(null)
+  const cancelPoseBuffer = useRef(0)
+  const cancelCooldownUntil = useRef(0)  // timestamp: reject new gestures until after cancel cooldown
 
   // ── Read arm destination without adding it to the dep array ────────────
   // Critical: if we read armDestinationSquare from the hook's reactive
@@ -174,7 +188,31 @@ export function useGesture(
       // Clear squareName so stale cursor position never triggers isDropTarget/isHovered
       setCursor({ visible: false, squareName: null })
 
-      const detectedType = detectHandGesture(gesture)
+      // ── Grabbing state: watch for cancel pose (both wrists raised) ──
+      if (gestureState === 'grabbing') {
+        const arms = poseLandmarksRef.current
+        if (arms && isCancelPose(arms)) {
+          cancelPoseBuffer.current = Math.min(cancelPoseBuffer.current + 1, CANCEL_FRAMES + 1)
+        } else {
+          cancelPoseBuffer.current = 0
+        }
+        if (cancelPoseBuffer.current >= CANCEL_FRAMES) {
+          useGameStore.getState().setGame({ selectedSquare: null, legalTargets: [] })
+          grabbedSquareRef.current = null
+          cancelPoseBuffer.current = 0
+          activeGesture.current = null
+          cancelCooldownUntil.current = performance.now() + 700  // 700ms cooldown after cancel
+          setGestureState('idle')
+        }
+        return
+      }
+
+      cancelPoseBuffer.current = 0
+
+      // Block gestures during post-cancel cooldown
+      const inCooldown = performance.now() < cancelCooldownUntil.current
+
+      const detectedType = inCooldown ? null : detectHandGesture(gesture)
 
       if (detectedType) {
         const cur = activeGesture.current

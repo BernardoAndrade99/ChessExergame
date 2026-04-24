@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
+import type { ArmLandmarks } from './hooks/useMediaPipePose'
 import { useGameStore } from './store/gameStore'
 import { useChessEngine } from './hooks/useChessEngine'
 import { useStockfish } from './hooks/useStockfish'
@@ -165,6 +166,10 @@ const GameScreen: React.FC = () => {
   const { getBestMove, newGame } = useStockfish()
   const boardRef = useRef<HTMLDivElement>(null)
   const [landmarks, setLandmarks] = useState<NormalizedLandmark[] | null>(null)
+  const poseLandmarksRef = useRef<ArmLandmarks | null>(null)
+  const handlePoseLandmarks = useCallback((arms: ArmLandmarks | null) => {
+    poseLandmarksRef.current = arms
+  }, [])
   const prevBestMoveRef = useRef<string | null>(null)
   const initializedRef = useRef(false)
   const puzzleSide = playerSide === 'white' ? 'w' : 'b'
@@ -264,7 +269,7 @@ const GameScreen: React.FC = () => {
   }, [stockfish.bestMove, gameMode, playerSide, game.turn, makeMoveFromUci, setStockfish])
 
   // ── Gesture handlers ──
-  const { registerHandlers } = useGesture(landmarks, boardRef as React.RefObject<HTMLElement>)
+  const { registerHandlers } = useGesture(landmarks, poseLandmarksRef, boardRef as React.RefObject<HTMLElement>)
 
   const handleSelect = useCallback((sq: string): boolean => {
     return selectSquare(sq, gameMode === 'puzzle')
@@ -354,6 +359,7 @@ const GameScreen: React.FC = () => {
           <div style={{ position: 'relative' }}>
             <CameraFeed
               onLandmarks={setLandmarks}
+              onPoseLandmarks={handlePoseLandmarks}
               enabled
             />
           </div>
