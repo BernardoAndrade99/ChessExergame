@@ -87,6 +87,10 @@ interface ChessMoveStore {
   // Phase 2 — Hand gesture piece-type selection
   handGesturePieceType: string | null      // 'n' when L-shape detected, null otherwise
   setHandGesturePieceType: (t: string | null) => void
+
+  // Bishop arm sweep — preview destination while sweeping
+  sweepPreviewSquare: string | null
+  setSweepPreviewSquare: (sq: string | null) => void
 }
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -157,4 +161,7 @@ export const useGameStore = create<ChessMoveStore>((set) => ({
 
   handGesturePieceType: null,
   setHandGesturePieceType: (handGesturePieceType) => set({ handGesturePieceType }),
+
+  sweepPreviewSquare: null,
+  setSweepPreviewSquare: (sweepPreviewSquare) => set({ sweepPreviewSquare }),
 }))

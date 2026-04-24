@@ -12,6 +12,11 @@ const GESTURE_FRAMES = 5      // stable frames before a hand gesture activates
 const FLICK_THRESHOLD = 0.07  // normalized palm displacement to trigger piece selection
 const CANCEL_FRAMES = 10      // ~165ms at 60fps of holding cancel pose
 
+const SWEEP_DEAD_ZONE = 0.04      // min wrist displacement before sweep activates (normalized)
+const SWEEP_SCALE    = 0.04      // wrist displacement per diagonal square (normalized)
+const SWEEP_STOP_VEL = 0.006     // wrist velocity threshold for "arm stopped" (normalized/frame)
+const SWEEP_STOP_MS  = 500       // ms of stillness required to commit a sweep
+
 /** Both wrists clearly above their respective shoulders = cancel selection. */
 function isCancelPose(arms: ArmLandmarks): boolean {
   const RAISE_THRESHOLD = 0.10  // wrist must be 10% of frame above shoulder (MediaPipe y: smaller = higher)
@@ -19,6 +24,52 @@ function isCancelPose(arms: ArmLandmarks): boolean {
     arms.leftWrist.y  < arms.leftShoulder.y  - RAISE_THRESHOLD &&
     arms.rightWrist.y < arms.rightShoulder.y - RAISE_THRESHOLD
   )
+}
+
+/**
+ * Find the best bishop destination given a screen-space sweep displacement.
+ * sdx/sdy are in screen coordinates (x: right=+, y: down=+, camera mirror already applied).
+ */
+function findBishopSweepTarget(
+  selectedSquare: string,
+  legalTargets: string[],
+  sdx: number,
+  sdy: number,
+  sweepMag: number,
+  playerSide: 'white' | 'black'
+): string | null {
+  if (sweepMag < SWEEP_DEAD_ZONE || legalTargets.length === 0) return null
+  const fdx = sdx / sweepMag
+  const fdy = sdy / sweepMag
+  const fromCol  = 'abcdefgh'.indexOf(selectedSquare[0])
+  const fromRank = parseInt(selectedSquare[1])           // 1–8
+  const expectedSteps = Math.max(1, Math.round(sweepMag / SWEEP_SCALE))
+
+  let best: string | null = null
+  let bestScore = -Infinity
+
+  for (const sq of legalTargets) {
+    const toCol  = 'abcdefgh'.indexOf(sq[0])
+    const toRank = parseInt(sq[1])
+    const dCol  = toCol  - fromCol
+    const dRank = toRank - fromRank
+    const steps = Math.abs(dCol)        // bishop: |dCol| === |dRank| always
+    if (steps === 0) continue
+
+    // Screen direction: col+ = screen-right, rank+ = screen-up for white
+    let screenDirX =  dCol  / steps
+    let screenDirY = -(dRank / steps)   // rank+ = up on screen = −Y
+    if (playerSide === 'black') { screenDirX = -screenDirX; screenDirY = -screenDirY }
+
+    const alignment = fdx * screenDirX + fdy * screenDirY
+    if (alignment <= 0.3) continue     // not pointing this way
+
+    const distScore = 1 - Math.abs(steps - expectedSteps) / 7
+    const score = alignment * 0.6 + distScore * 0.4
+    if (score > bestScore) { bestScore = score; best = sq }
+  }
+
+  return best
 }
 
 /**
@@ -106,6 +157,9 @@ export function useGesture(
   const grabbedSquareRef = useRef<string | null>(null)
   const cancelPoseBuffer = useRef(0)
   const cancelCooldownUntil = useRef(0)  // timestamp: reject new gestures until after cancel cooldown
+  const wristAnchorRef    = useRef<{ x: number; y: number } | null>(null)  // set on first grabbing frame
+  const lastWristRef      = useRef<{ x: number; y: number } | null>(null)  // for velocity
+  const sweepStillSince   = useRef<number | null>(null)                     // timestamp when arm first went still
 
   // ── Read arm destination without adding it to the dep array ────────────
   // Critical: if we read armDestinationSquare from the hook's reactive
@@ -138,8 +192,12 @@ export function useGesture(
         // 2 seconds with no hand → clear all selections and highlights
         useGameStore.getState().setGame({ selectedSquare: null, legalTargets: [] })
         useGameStore.getState().setHandGesturePieceType(null)
+        useGameStore.getState().setSweepPreviewSquare(null)
         activeGesture.current = null
         grabbedSquareRef.current = null
+        wristAnchorRef.current = null
+        lastWristRef.current   = null
+        sweepStillSince.current = null
         setGestureState('idle')
         noHandSince.current = null
       }
@@ -198,12 +256,78 @@ export function useGesture(
         }
         if (cancelPoseBuffer.current >= CANCEL_FRAMES) {
           useGameStore.getState().setGame({ selectedSquare: null, legalTargets: [] })
+          useGameStore.getState().setSweepPreviewSquare(null)
           grabbedSquareRef.current = null
           cancelPoseBuffer.current = 0
           activeGesture.current = null
+          wristAnchorRef.current = null
+          lastWristRef.current   = null
+          sweepStillSince.current = null
           cancelCooldownUntil.current = performance.now() + 700  // 700ms cooldown after cancel
           setGestureState('idle')
+          return
         }
+
+        // ── Bishop arm sweep ──────────────────────────────────────────────
+        const { selectedSquare, legalTargets, fen } = useGameStore.getState().game
+        if (selectedSquare && arms) {
+          const chess = new Chess(fen)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const piece = chess.get(selectedSquare as any)
+          if (piece?.type === 'b') {
+            const wrist = arms.rightWrist
+
+            // Initialise anchor on first frame of this grabbing session
+            if (!wristAnchorRef.current) {
+              wristAnchorRef.current = { x: wrist.x, y: wrist.y }
+              lastWristRef.current   = { x: wrist.x, y: wrist.y }
+            }
+
+            // Velocity (mirror x to match screen space)
+            const vx = -(wrist.x - (lastWristRef.current?.x ?? wrist.x))
+            const vy =   wrist.y - (lastWristRef.current?.y ?? wrist.y)
+            const velocity = Math.sqrt(vx * vx + vy * vy)
+            lastWristRef.current = { x: wrist.x, y: wrist.y }
+
+            // Sweep displacement from anchor (mirror x)
+            const sdx = -(wrist.x - wristAnchorRef.current.x)
+            const sdy =   wrist.y - wristAnchorRef.current.y
+            const sweepMag = Math.sqrt(sdx * sdx + sdy * sdy)
+
+            const target = findBishopSweepTarget(
+              selectedSquare, legalTargets, sdx, sdy, sweepMag, playerSide
+            )
+            useGameStore.getState().setSweepPreviewSquare(target)
+
+            if (target) {
+              if (velocity < SWEEP_STOP_VEL) {
+                if (sweepStillSince.current === null) {
+                  sweepStillSince.current = performance.now()
+                } else if (performance.now() - sweepStillSince.current >= SWEEP_STOP_MS) {
+                  // Commit the move
+                  if (onDropSquare.current && grabbedSquareRef.current) {
+                    onDropSquare.current(grabbedSquareRef.current, target)
+                  }
+                  useGameStore.getState().setSweepPreviewSquare(null)
+                  wristAnchorRef.current = null
+                  lastWristRef.current   = null
+                  sweepStillSince.current = null
+                  grabbedSquareRef.current = null
+                  setGestureState('idle')
+                  return
+                }
+              } else {
+                sweepStillSince.current = null
+              }
+            } else {
+              sweepStillSince.current = null
+            }
+          } else {
+            // Non-bishop piece grabbed — clear any stale sweep preview
+            useGameStore.getState().setSweepPreviewSquare(null)
+          }
+        }
+
         return
       }
 

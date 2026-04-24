@@ -18,12 +18,13 @@ interface BoardSquareProps {
   showFileLabel: boolean
   isGrabbed: boolean
   isKnightHighlight: boolean  // reused prop name; highlights any gesture-selected piece type
+  isSweepPreview: boolean     // bishop arm-sweep destination preview
 }
 
 export const BoardSquare: React.FC<BoardSquareProps> = ({
   squareName, piece, isLight, isSelected, isLegalTarget,
   isHovered, isDropTarget, isLastMove, isCheck, showRankLabel, showFileLabel, isGrabbed,
-  isKnightHighlight,
+  isKnightHighlight, isSweepPreview,
 }) => {
   const { flashSquare, flashType } = useGameStore()
   const isFlashing = flashSquare === squareName
@@ -83,6 +84,18 @@ export const BoardSquare: React.FC<BoardSquareProps> = ({
           border: '3px solid rgba(139,92,246,0.85)',
           borderRadius: '4px',
           boxShadow: 'inset 0 0 10px rgba(139,92,246,0.4)',
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      {isSweepPreview && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          border: '3px solid rgba(59,130,246,0.9)',
+          borderRadius: '4px',
+          background: 'rgba(59,130,246,0.18)',
+          boxShadow: 'inset 0 0 12px rgba(59,130,246,0.5)',
           pointerEvents: 'none',
         }} />
       )}
