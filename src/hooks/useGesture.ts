@@ -19,6 +19,14 @@ const SWEEP_STOP_MS       = 500    // ms of stillness required to commit a sweep
 const SWEEP_COOL_MS       = 600    // ms cooldown after selection before anchor can lock
 const ANCHOR_SETTLE_MS    = 300    // ms arm must be still to lock the sweep anchor
 
+const KNIGHT_SEQ_MS          = 1200  // ms window after first knight gesture to complete the sequence
+const KNIGHT_GESTURE_MS      = 120   // ms a pose must be held before it registers
+const HIP_VIS_TURN_THR       = 0.35  // hip visibility below this = body turned sideways
+const HIP_VIS_STABLE_THR     = 0.60  // opposite hip must stay above this to confirm turn direction
+const KNIGHT_COOLDOWN_MS     = 800   // ms after a knight move before a new sequence can start
+
+type KnightDir = 'jump_fwd' | 'jump_back' | 'turn_left' | 'turn_right'
+
 /** Both wrists clearly above their respective shoulders = cancel selection. */
 function isCancelPose(arms: ArmLandmarks): boolean {
   const RAISE_THRESHOLD = 0.10  // wrist must be 10% of frame above shoulder (MediaPipe y: smaller = higher)
@@ -78,13 +86,57 @@ function findBishopSweepTarget(
 }
 
 /**
- * Map a detected gesture to the piece type it represents.
+ * Compute the exact target square for a knight move given a 2-gesture sequence.
+ * Jump-first → long side (2 sq) in jump direction, short side (1 sq) in turn direction.
+ * Turn-first → long side (2 sq) in turn direction, short side (1 sq) in jump direction.
+ */
+function findKnightTarget(
+  selectedSquare: string,
+  legalTargets: string[],
+  first: KnightDir,
+  second: KnightDir,
+  playerSide: 'white' | 'black'
+): string | null {
+  const fromCol  = 'abcdefgh'.indexOf(selectedSquare[0])
+  const fromRank = parseInt(selectedSquare[1])  // 1–8
+  let dCol: number, dRank: number
+  if (first === 'jump_fwd' || first === 'jump_back') {
+    dRank = first  === 'jump_fwd'   ? 2 : -2
+    dCol  = second === 'turn_right' ? 1 : -1
+  } else {
+    dCol  = first  === 'turn_right' ? 2 : -2
+    dRank = second === 'jump_fwd'   ? 1 : -1
+  }
+  if (playerSide === 'black') { dCol = -dCol; dRank = -dRank }
+  const targetCol  = fromCol  + dCol
+  const targetRank = fromRank + dRank
+  if (targetCol < 0 || targetCol > 7 || targetRank < 1 || targetRank > 8) return null
+  const targetSq = `${'abcdefgh'[targetCol]}${targetRank}`
+  return legalTargets.includes(targetSq) ? targetSq : null
+}
+
+/** Return all legal squares reachable by pairing the first gesture with either valid second. */
+function knightLegalForFirstGesture(
+  selectedSquare: string,
+  legalTargets: string[],
+  first: KnightDir,
+  playerSide: 'white' | 'black'
+): string[] {
+  const seconds: KnightDir[] = (first === 'jump_fwd' || first === 'jump_back')
+    ? ['turn_left', 'turn_right']
+    : ['jump_fwd', 'jump_back']
+  return seconds
+    .map(s => findKnightTarget(selectedSquare, legalTargets, first, s, playerSide))
+    .filter((sq): sq is string => sq !== null)
+}
+
+/**
  * Order matters — more specific patterns (fewer extended fingers) checked first.
  */
 function detectHandGesture(gesture: ReturnType<typeof import('../lib/gestureClassifier').classifyGesture>): string | null {
   if (gesture.isLShape)      return 'n'  // Knight:  thumb + index
   if (gesture.isPeaceSign)   return 'b'  // Bishop:  index + middle
-  if (gesture.isOneIndex)    return 'p'  // Pawn:    index only
+  // if (gesture.isOneIndex)    return 'p'  // Pawn:    index only (disabled — conflicts with knight)
   if (gesture.isFist)        return 'r'  // Rook:    fist
   if (gesture.isFourFingers) return 'k'  // King:    four fingers, no thumb
   if (gesture.isOpenPalm)    return 'q'  // Queen:   all five
@@ -169,6 +221,11 @@ export function useGesture(
   const lastWristRef        = useRef<{ x: number; y: number } | null>(null)  // for velocity
   const sweepStillSince     = useRef<number | null>(null)  // timestamp when arm first went still on target
 
+  const hipSpanBaselineRef  = useRef<number | null>(null)  // EMA of hip span for jump detection
+  const knightSeq = useRef<{ first: KnightDir; since: number } | null>(null)  // active sequence
+  const knightCooldownUntil = useRef(0)   // timestamp: ignore new sequences until after this
+  const knightGestureRef    = useRef<{ dir: KnightDir; since: number; processed: boolean } | null>(null)
+
   // ── Read arm destination without adding it to the dep array ────────────
   // Critical: if we read armDestinationSquare from the hook's reactive
   // destructure, it appears in the dep array and re-runs this effect on
@@ -201,6 +258,7 @@ export function useGesture(
         useGameStore.getState().setGame({ selectedSquare: null, legalTargets: [] })
         useGameStore.getState().setHandGesturePieceType(null)
         useGameStore.getState().setSweepPreviewSquare(null)
+        useGameStore.getState().setKnightPreviewSquares([])
         activeGesture.current = null
         grabbedSquareRef.current = null
         sweepCooldownUntil.current = 0
@@ -209,6 +267,10 @@ export function useGesture(
         lastWristRef.current   = null
         anchorSettleSince.current  = null
         sweepStillSince.current = null
+        knightSeq.current = null
+        knightGestureRef.current = null
+        hipSpanBaselineRef.current = null
+        knightCooldownUntil.current = 0
         setGestureState('idle')
         noHandSince.current = null
       }
@@ -268,6 +330,7 @@ export function useGesture(
         if (cancelSince.current !== null && performance.now() - cancelSince.current >= CANCEL_MS) {
           useGameStore.getState().setGame({ selectedSquare: null, legalTargets: [] })
           useGameStore.getState().setSweepPreviewSquare(null)
+          useGameStore.getState().setKnightPreviewSquares([])
           grabbedSquareRef.current = null
           cancelSince.current = null
           activeGesture.current = null
@@ -277,6 +340,9 @@ export function useGesture(
           lastWristRef.current   = null
           anchorSettleSince.current  = null
           sweepStillSince.current = null
+          knightSeq.current = null
+          knightGestureRef.current = null
+          knightCooldownUntil.current = 0
           cancelCooldownUntil.current = performance.now() + 700  // 700ms cooldown after cancel
           setGestureState('idle')
           return
@@ -356,9 +422,93 @@ export function useGesture(
                 sweepStillSince.current = null
               }
             }
-          } else {
-            // Non-bishop piece grabbed — clear any stale sweep preview
+          } else if (piece?.type === 'n' && arms) {
+            // ── Knight dual-gesture sequence ───────────────────────────────
             useGameStore.getState().setSweepPreviewSquare(null)
+
+            const hipSpan = Math.abs(arms.leftHip.x - arms.rightHip.x)
+
+            // Update EMA baseline slowly — only when outside a sequence and cooldown
+            if (!knightSeq.current && performance.now() > knightCooldownUntil.current) {
+              hipSpanBaselineRef.current = hipSpanBaselineRef.current === null
+                ? hipSpan
+                : hipSpanBaselineRef.current * 0.97 + hipSpan * 0.03
+            }
+
+            // Expire timed-out sequence
+            if (knightSeq.current && performance.now() - knightSeq.current.since > KNIGHT_SEQ_MS) {
+              knightSeq.current = null
+              useGameStore.getState().setKnightPreviewSquares([])
+            }
+
+            // Classify current-frame gesture
+            const baseline = hipSpanBaselineRef.current ?? hipSpan
+            let frameDir: KnightDir | null = null
+            if (baseline > 0.01) {
+              const rel = (hipSpan - baseline) / baseline
+              if      (rel > 0) frameDir = 'jump_fwd'
+              else if (rel < 0) frameDir = 'jump_back'
+            }
+            if (!frameDir) {
+              const leftVis  = arms.leftHip.visibility  ?? 1
+              const rightVis = arms.rightHip.visibility ?? 1
+              if      (rightVis < HIP_VIS_TURN_THR && leftVis  > HIP_VIS_STABLE_THR) frameDir = 'turn_right'
+              else if (leftVis  < HIP_VIS_TURN_THR && rightVis > HIP_VIS_STABLE_THR) frameDir = 'turn_left'
+            }
+
+            // Debounce: hold gesture for KNIGHT_GESTURE_MS before registering
+            if (frameDir !== null) {
+              const cur = knightGestureRef.current
+              if (!cur || cur.dir !== frameDir) {
+                knightGestureRef.current = { dir: frameDir, since: performance.now(), processed: false }
+              } else if (!cur.processed && performance.now() - cur.since >= KNIGHT_GESTURE_MS) {
+                cur.processed = true
+                if (performance.now() > knightCooldownUntil.current) {
+                  const dir = cur.dir
+                  if (!knightSeq.current) {
+                    // First gesture — start sequence and preview which squares are reachable
+                    knightSeq.current = { first: dir, since: performance.now() }
+                    const { selectedSquare: sel, legalTargets: legal } = useGameStore.getState().game
+                    if (sel) useGameStore.getState().setKnightPreviewSquares(
+                      knightLegalForFirstGesture(sel, legal, dir, playerSide)
+                    )
+                  } else {
+                    const firstAxis  = knightSeq.current.first.startsWith('jump') ? 'jump' : 'turn'
+                    const secondAxis = dir.startsWith('jump') ? 'jump' : 'turn'
+                    if (firstAxis !== secondAxis) {
+                      // Second gesture on perpendicular axis — fire the move
+                      const { selectedSquare: sel, legalTargets: legal } = useGameStore.getState().game
+                      const target = sel
+                        ? findKnightTarget(sel, legal, knightSeq.current.first, dir, playerSide)
+                        : null
+                      if (target && onDropSquare.current && grabbedSquareRef.current) {
+                        onDropSquare.current(grabbedSquareRef.current, target)
+                      }
+                      useGameStore.getState().setKnightPreviewSquares([])
+                      knightSeq.current = null
+                      knightGestureRef.current = null
+                      knightCooldownUntil.current = performance.now() + KNIGHT_COOLDOWN_MS
+                      grabbedSquareRef.current = null
+                      setGestureState('idle')
+                      return
+                    } else {
+                      // Same axis — restart sequence with the new gesture
+                      knightSeq.current = { first: dir, since: performance.now() }
+                      const { selectedSquare: sel, legalTargets: legal } = useGameStore.getState().game
+                      if (sel) useGameStore.getState().setKnightPreviewSquares(
+                        knightLegalForFirstGesture(sel, legal, dir, playerSide)
+                      )
+                    }
+                  }
+                }
+              }
+            } else {
+              knightGestureRef.current = null
+            }
+          } else {
+            // Non-bishop, non-knight piece — clear any stale previews
+            useGameStore.getState().setSweepPreviewSquare(null)
+            useGameStore.getState().setKnightPreviewSquares([])
           }
         }
 
@@ -370,7 +520,22 @@ export function useGesture(
       // Block gestures during post-cancel cooldown
       const inCooldown = performance.now() < cancelCooldownUntil.current
 
-      const detectedType = inCooldown ? null : detectHandGesture(gesture)
+      // Only recognize hand gestures when at least one hand is clearly above the hip midpoint.
+      // Prevents accidental triggers when both arms are resting at the side.
+      // Falls back to allowing recognition if pose data is absent or hip visibility is low.
+      const HAND_ABOVE_HIP_MARGIN = 0.05  // wrist must be at least 5% above hip (MediaPipe y: smaller = higher)
+      const HIP_VIS_MIN = 0.50            // minimum hip visibility to trust the y coordinate
+      const poseArms = poseLandmarksRef.current
+      const hipsVisible = poseArms
+        && (poseArms.leftHip.visibility  ?? 1) > HIP_VIS_MIN
+        && (poseArms.rightHip.visibility ?? 1) > HIP_VIS_MIN
+      const hipMidY = hipsVisible ? (poseArms!.leftHip.y + poseArms!.rightHip.y) / 2 : null
+      const highestWristY = poseArms ? Math.min(poseArms.leftWrist.y, poseArms.rightWrist.y) : null
+      const handAboveHip = (hipMidY !== null && highestWristY !== null)
+        ? highestWristY < hipMidY - HAND_ABOVE_HIP_MARGIN
+        : true  // no pose data or hips not visible → don't block
+
+      const detectedType = (inCooldown || !handAboveHip) ? null : detectHandGesture(gesture)
 
       if (detectedType) {
         const cur = activeGesture.current

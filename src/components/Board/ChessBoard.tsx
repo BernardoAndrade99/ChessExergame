@@ -4,7 +4,7 @@ import { BoardSquare } from './BoardSquare'
 import { useGameStore } from '../../store/gameStore'
 
 export const ChessBoard: React.FC = () => {
-  const { game, cursor, gestureState, playerSide, handGesturePieceType, sweepPreviewSquare } = useGameStore()
+  const { game, cursor, gestureState, playerSide, handGesturePieceType, sweepPreviewSquare, knightPreviewSquares } = useGameStore()
   const boardRef = useRef<HTMLDivElement>(null)
 
   const flipped = playerSide === 'black'
@@ -68,6 +68,7 @@ export const ChessBoard: React.FC = () => {
           isGrabbed={gestureState === 'grabbing'}
           isKnightHighlight={isKnightHighlight}
           isSweepPreview={sweepPreviewSquare === squareName}
+          isKnightPreview={knightPreviewSquares.includes(squareName)}
         />
       )
     }

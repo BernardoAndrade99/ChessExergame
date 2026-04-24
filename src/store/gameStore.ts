@@ -91,6 +91,10 @@ interface ChessMoveStore {
   // Bishop arm sweep — preview destination while sweeping
   sweepPreviewSquare: string | null
   setSweepPreviewSquare: (sq: string | null) => void
+
+  // Knight dual-gesture sequence — preview reachable squares after first gesture
+  knightPreviewSquares: string[]
+  setKnightPreviewSquares: (squares: string[]) => void
 }
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -164,4 +168,7 @@ export const useGameStore = create<ChessMoveStore>((set) => ({
 
   sweepPreviewSquare: null,
   setSweepPreviewSquare: (sweepPreviewSquare) => set({ sweepPreviewSquare }),
+
+  knightPreviewSquares: [],
+  setKnightPreviewSquares: (knightPreviewSquares) => set({ knightPreviewSquares }),
 }))

@@ -3,10 +3,11 @@
  * Phase 1.5 — MediaPipe PoseLandmarker integration.
  *
  * Shares the webcam stream with useMediaPipeHands (same video element).
- * Only extracts the 6 landmarks needed for arm tracking:
+ * Only extracts the 8 landmarks needed for arm tracking + knight gestures:
  *   11 = left shoulder,  12 = right shoulder
  *   13 = left elbow,     14 = right elbow
  *   15 = left wrist,     16 = right wrist
+ *   23 = left hip,       24 = right hip
  */
 
 import { useEffect, useRef } from 'react'
@@ -21,6 +22,8 @@ export const POSE_LANDMARKS = {
   RIGHT_ELBOW:    14,
   LEFT_WRIST:     15,
   RIGHT_WRIST:    16,
+  LEFT_HIP:       23,
+  RIGHT_HIP:      24,
 } as const
 
 export interface ArmLandmarks {
@@ -30,6 +33,8 @@ export interface ArmLandmarks {
   rightElbow:    NormalizedLandmark
   leftWrist:     NormalizedLandmark
   rightWrist:    NormalizedLandmark
+  leftHip:       NormalizedLandmark
+  rightHip:      NormalizedLandmark
 }
 
 interface UseMediaPipePoseOptions {
@@ -64,7 +69,7 @@ export function useMediaPipePose({
         if (result.landmarks && result.landmarks.length > 0) {
           const lm = result.landmarks[0]
           // Ensure all required landmarks exist
-          if (lm.length > 16) {
+          if (lm.length > 24) {
             onResults({
               leftShoulder:  lm[POSE_LANDMARKS.LEFT_SHOULDER],
               rightShoulder: lm[POSE_LANDMARKS.RIGHT_SHOULDER],
@@ -72,6 +77,8 @@ export function useMediaPipePose({
               rightElbow:    lm[POSE_LANDMARKS.RIGHT_ELBOW],
               leftWrist:     lm[POSE_LANDMARKS.LEFT_WRIST],
               rightWrist:    lm[POSE_LANDMARKS.RIGHT_WRIST],
+              leftHip:       lm[POSE_LANDMARKS.LEFT_HIP],
+              rightHip:      lm[POSE_LANDMARKS.RIGHT_HIP],
             })
           } else {
             onResults(null)

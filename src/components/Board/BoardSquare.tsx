@@ -19,12 +19,13 @@ interface BoardSquareProps {
   isGrabbed: boolean
   isKnightHighlight: boolean  // reused prop name; highlights any gesture-selected piece type
   isSweepPreview: boolean     // bishop arm-sweep destination preview
+  isKnightPreview: boolean    // knight sequence — reachable squares after first gesture
 }
 
 export const BoardSquare: React.FC<BoardSquareProps> = ({
   squareName, piece, isLight, isSelected, isLegalTarget,
   isHovered, isDropTarget, isLastMove, isCheck, showRankLabel, showFileLabel, isGrabbed,
-  isKnightHighlight, isSweepPreview,
+  isKnightHighlight, isSweepPreview, isKnightPreview,
 }) => {
   const { flashSquare, flashType } = useGameStore()
   const isFlashing = flashSquare === squareName
@@ -96,6 +97,18 @@ export const BoardSquare: React.FC<BoardSquareProps> = ({
           borderRadius: '4px',
           background: 'rgba(59,130,246,0.18)',
           boxShadow: 'inset 0 0 12px rgba(59,130,246,0.5)',
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      {isKnightPreview && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          border: '3px solid rgba(234,179,8,0.9)',
+          borderRadius: '4px',
+          background: 'rgba(234,179,8,0.18)',
+          boxShadow: 'inset 0 0 12px rgba(234,179,8,0.5)',
           pointerEvents: 'none',
         }} />
       )}
