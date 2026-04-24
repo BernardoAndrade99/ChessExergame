@@ -1,8 +1,8 @@
 /**
  * ArmModePanel.tsx
  * HUD panel for the gesture-based piece selection mode.
- * When enabled: hold an "L" shape (thumb + index) to highlight knights,
- * then flick toward one to select it.
+ * Each hand shape highlights the matching piece type on the board;
+ * a flick toward a piece selects it.
  */
 
 import React from 'react'
@@ -11,13 +11,17 @@ import { useGameStore } from '../../store/gameStore'
 export const ArmModePanel: React.FC = () => {
   const { armModeEnabled, setArmModeEnabled, handGesturePieceType } = useGameStore()
 
-  const isHighlighting = handGesturePieceType === 'n'
+  const pieceLabels: Record<string, string> = {
+    n: '♞ Knights', b: '♝ Bishops', r: '♜ Rooks',
+    k: '♚ King', q: '♛ Queen', p: '♟ Pawns',
+  }
+  const isHighlighting = handGesturePieceType !== null
 
   const statusText = !armModeEnabled
     ? 'Disabled'
     : isHighlighting
-    ? '♞ Knights highlighted — flick to select'
-    : 'Hold L-shape to select a knight…'
+    ? `${pieceLabels[handGesturePieceType!] ?? 'Pieces'} highlighted — flick to select`
+    : 'Hold a gesture to highlight pieces…'
 
   const statusColor = !armModeEnabled
     ? 'var(--text-muted)'
@@ -91,19 +95,24 @@ export const ArmModePanel: React.FC = () => {
           color: 'var(--text-muted)',
           lineHeight: 1.7,
         }}>
-          <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.1rem' }}>🤙</span>
-            <div>
-              <strong style={{ color: 'var(--text-secondary)' }}>Hold "L"</strong> — thumb out + index up<br />
-              <span style={{ color: '#8b5cf6' }}>Both knights glow purple</span>
+          {[
+            { emoji: '🤙', gesture: 'L-shape (thumb + index)', piece: 'Knight' },
+            { emoji: '✌️', gesture: 'Peace sign (index + middle)', piece: 'Bishop' },
+            { emoji: '☝️', gesture: 'One index up', piece: 'Pawn' },
+            { emoji: '✊', gesture: 'Fist', piece: 'Rook' },
+            { emoji: '🖐', gesture: 'Four fingers (no thumb)', piece: 'King' },
+            { emoji: '✋', gesture: 'Open palm (all five)', piece: 'Queen' },
+          ].map(({ emoji, gesture, piece }) => (
+            <div key={piece} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{emoji}</span>
+              <div>
+                <strong style={{ color: 'var(--text-secondary)' }}>{piece}</strong> — {gesture}
+              </div>
             </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          ))}
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: '1.1rem' }}>👉</span>
-            <div>
-              <strong style={{ color: 'var(--text-secondary)' }}>Flick toward a knight</strong><br />
-              <span>That knight gets selected</span>
-            </div>
+            <div><strong style={{ color: 'var(--text-secondary)' }}>Flick toward a piece</strong> to select it</div>
           </div>
         </div>
       ) : (

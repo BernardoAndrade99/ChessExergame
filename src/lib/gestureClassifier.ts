@@ -1,4 +1,4 @@
-import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
+﻿import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 
 // Landmark indices (MediaPipe Hands)
 const WRIST = 0
@@ -29,6 +29,11 @@ export interface GestureResult {
   pinchDistance: number
   fingerStates: FingerStates
   isLShape: boolean
+  isPeaceSign: boolean
+  isFist: boolean
+  isFourFingers: boolean
+  isOpenPalm: boolean
+  isOneIndex: boolean
   indexTip: { x: number; y: number; z: number }
   palmCenter: { x: number; y: number }
 }
@@ -39,10 +44,6 @@ function euclidean2D(a: NormalizedLandmark, b: NormalizedLandmark): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 }
 
-/**
- * Classify a set of hand landmarks into gesture data.
- * Rule-based: finger extended if tip_y < PIP_y (in MediaPipe coords, smaller y = higher).
- */
 export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult {
   if (!landmarks || landmarks.length < 21) {
     return {
@@ -50,6 +51,11 @@ export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult 
       pinchDistance: 1,
       fingerStates: { thumb: false, index: false, middle: false, ring: false, pinky: false },
       isLShape: false,
+      isPeaceSign: false,
+      isFist: false,
+      isFourFingers: false,
+      isOpenPalm: false,
+      isOneIndex: false,
       indexTip: { x: 0.5, y: 0.5, z: 0 },
       palmCenter: { x: 0.5, y: 0.5 },
     }
@@ -60,13 +66,10 @@ export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult 
   const thumbMcp  = landmarks[THUMB_MCP]
   const wrist     = landmarks[WRIST]
 
-  // Pinch detection
   const pinchDistance = euclidean2D(thumbTip, indexTip)
   const isPinching = pinchDistance < PINCH_THRESHOLD
 
-  // Finger extension rules
   const fingerStates: FingerStates = {
-    // Thumb: compare x-axis (thumb extends sideways)
     thumb:  landmarks[THUMB_TIP].x < landmarks[THUMB_IP].x,
     index:  landmarks[INDEX_TIP].y  < landmarks[INDEX_PIP].y,
     middle: landmarks[MIDDLE_TIP].y < landmarks[MIDDLE_PIP].y,
@@ -74,46 +77,39 @@ export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult 
     pinky:  landmarks[PINKY_TIP].y  < landmarks[PINKY_PIP].y,
   }
 
-  // Palm center: midpoint of wrist and middle MCP
   const palmCenter = {
     x: (wrist.x + landmarks[9].x) / 2,
     y: (wrist.y + landmarks[9].y) / 2,
   }
 
-  // Correct thumb for right vs left hand (simplified: check thumb relative to index MCP)
-  // If thumb tip is to the right of thumb MCP, it's extended (for right hand mirrored)
   const thumbExtended = Math.abs(thumbTip.x - thumbMcp.x) > 0.04
-  fingerStates.thumb = thumbExtended
 
-  // L-shape: thumb extended sideways + index pointing up + other three fingers curled
-  const isLShape = thumbExtended &&
-    fingerStates.index &&
-    !fingerStates.middle &&
-    !fingerStates.ring &&
-    !fingerStates.pinky
+  const isLShape = thumbExtended && fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  const isPeaceSign = !thumbExtended && fingerStates.index && fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  const isOneIndex  = !thumbExtended && fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  const isFist      = !thumbExtended && !fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  const isFourFingers = !thumbExtended && fingerStates.index && fingerStates.middle && fingerStates.ring && fingerStates.pinky
+  const isOpenPalm  = thumbExtended && fingerStates.index && fingerStates.middle && fingerStates.ring && fingerStates.pinky
 
   return {
     isPinching,
     pinchDistance,
     fingerStates,
     isLShape,
+    isPeaceSign,
+    isFist,
+    isFourFingers,
+    isOpenPalm,
+    isOneIndex,
     indexTip: { x: indexTip.x, y: indexTip.y, z: indexTip.z },
     palmCenter,
   }
 }
 
-/**
- * Count how many fingers are extended
- */
 export function countExtendedFingers(fs: FingerStates): number {
   return [fs.thumb, fs.index, fs.middle, fs.ring, fs.pinky].filter(Boolean).length
 }
 
-/**
- * Encode finger state as a 5-bit string (thumb, index, middle, ring, pinky)
- */
 export function fingerPattern(fs: FingerStates): string {
-  return [fs.thumb, fs.index, fs.middle, fs.ring, fs.pinky]
-    .map(b => (b ? '1' : '0'))
-    .join('')
+  return [fs.thumb, fs.index, fs.middle, fs.ring, fs.pinky].map(b => (b ? '1' : '0')).join('')
 }

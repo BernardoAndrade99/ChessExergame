@@ -17,7 +17,7 @@ interface BoardSquareProps {
   showRankLabel: boolean
   showFileLabel: boolean
   isGrabbed: boolean
-  isKnightHighlight: boolean
+  isKnightHighlight: boolean  // reused prop name; highlights any gesture-selected piece type
 }
 
 export const BoardSquare: React.FC<BoardSquareProps> = ({

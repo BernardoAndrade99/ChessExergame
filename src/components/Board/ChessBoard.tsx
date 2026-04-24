@@ -13,14 +13,14 @@ export const ChessBoard: React.FC = () => {
   const chess = new Chess(game.fen)
   const board = chess.board() // 8x8 array [row][col], row 0 = rank 8
 
-  // Build set of knight squares to highlight when L-shape gesture is active
-  const knightHighlights = new Set<string>()
-  if (handGesturePieceType === 'n') {
+  // Highlight all current-player pieces of the gestured type
+  const pieceHighlights = new Set<string>()
+  if (handGesturePieceType) {
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
         const p = board[r][c]
-        if (p && p.type === 'n' && p.color === game.turn) {
-          knightHighlights.add(`${'abcdefgh'[c]}${8 - r}`)
+        if (p && p.type === handGesturePieceType && p.color === game.turn) {
+          pieceHighlights.add(`${'abcdefgh'[c]}${8 - r}`)
         }
       }
     }
@@ -47,7 +47,7 @@ export const ChessBoard: React.FC = () => {
         (game.lastMove.from === squareName || game.lastMove.to === squareName))
       const isCheck = game.isCheck && piece?.type === 'k' &&
         piece?.color === game.turn
-      const isKnightHighlight = knightHighlights.has(squareName)
+      const isKnightHighlight = pieceHighlights.has(squareName)
 
       squares.push(
         <BoardSquare
