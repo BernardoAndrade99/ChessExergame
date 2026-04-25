@@ -9,6 +9,18 @@ export interface Puzzle {
   sideToMove: 'w' | 'b'
 }
 
+// ── Temporary test puzzle: white knight on e4 + bishop on d4, all 8 knight moves reachable ──
+export const KNIGHT_BISHOP_TEST_PUZZLE: Puzzle = {
+  id: 'test_kb',
+  title: 'Knight & Bishop Test',
+  description: 'White to move — test knight and bishop gestures from a central position.',
+  fen: '4k3/8/8/8/2BN4/8/8/4K3 w - - 0 1',
+  solution: ['e4f6'],
+  theme: 'Test',
+  difficulty: 'easy',
+  sideToMove: 'w',
+}
+
 // Curated set of simple tactical puzzles for both sides
 export const PUZZLES: Puzzle[] = [
   {

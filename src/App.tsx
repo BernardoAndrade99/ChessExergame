@@ -13,7 +13,7 @@ import { MoveHistory } from './components/HUD/MoveHistory'
 import { StatusOverlay } from './components/HUD/StatusOverlay'
 import { ArmModePanel } from './components/HUD/ArmModePanel'
 import { CalibrationWizard } from './components/Calibration/CalibrationWizard'
-import { getNextPuzzle, getPuzzlesBySide, getRandomPuzzle, DIFFICULTY_COLOR } from './lib/puzzles'
+import { getPuzzlesBySide, DIFFICULTY_COLOR, KNIGHT_BISHOP_TEST_PUZZLE } from './lib/puzzles'
 import type { Puzzle } from './lib/puzzles'
 
 // ─── Mode Select Screen ───────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ const GameScreen: React.FC = () => {
   const sidePuzzles = getPuzzlesBySide(puzzleSide)
 
   // ── Puzzle state ──
-  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle>(() => getRandomPuzzle(undefined, puzzleSide))
+  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle>(() => KNIGHT_BISHOP_TEST_PUZZLE)
   const [puzzleSolvedCount, setPuzzleSolvedCount] = useState(0)
   const [puzzleSolved, setPuzzleSolved] = useState(false)
   const [puzzleFailed, setPuzzleFailed] = useState(false)
@@ -214,15 +214,15 @@ const GameScreen: React.FC = () => {
   }, [currentPuzzle])
 
   const handleNextPuzzle = useCallback(() => {
-    const next = getNextPuzzle(currentPuzzle.id, puzzleSide)
+    // TODO: restore normal puzzle progression; hardcoded to test position for now
     setPuzzleSolvedCount(c => c + 1)
-    loadPuzzle(next)
-  }, [currentPuzzle, loadPuzzle, puzzleSide])
+    loadPuzzle(KNIGHT_BISHOP_TEST_PUZZLE)
+  }, [loadPuzzle])
 
   const handleSkipPuzzle = useCallback(() => {
-    const next = getNextPuzzle(currentPuzzle.id, puzzleSide)
-    loadPuzzle(next)
-  }, [currentPuzzle, loadPuzzle, puzzleSide])
+    // TODO: restore normal puzzle progression; hardcoded to test position for now
+    loadPuzzle(KNIGHT_BISHOP_TEST_PUZZLE)
+  }, [loadPuzzle])
 
   // ── Stockfish auto-reply ──
   useEffect(() => {

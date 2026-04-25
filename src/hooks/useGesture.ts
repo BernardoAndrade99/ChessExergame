@@ -527,11 +527,11 @@ export function useGesture(
       // Block gestures during post-cancel cooldown
       const inCooldown = performance.now() < cancelCooldownUntil.current
 
-      // Only recognize hand gestures when at least one hand is clearly above the hip midpoint.
-      // Prevents accidental triggers when both arms are resting at the side.
+      // Only recognize hand gestures when at least one wrist is clearly above the hip midpoint.
+      // Prevents accidental triggers when arms are resting at the side.
       // Falls back to allowing recognition if pose data is absent or hip visibility is low.
-      const HAND_ABOVE_HIP_MARGIN = 0.05  // wrist must be at least 5% above hip (MediaPipe y: smaller = higher)
-      const HIP_VIS_MIN = 0.50            // minimum hip visibility to trust the y coordinate
+      const HAND_ABOVE_HIP_MARGIN = 0.05  // wrist must be at least 5% of frame above hip (MediaPipe y: smaller = higher)
+      const HIP_VIS_MIN = 0.50
       const poseArms = poseLandmarksRef.current
       const hipsVisible = poseArms
         && (poseArms.leftHip.visibility  ?? 1) > HIP_VIS_MIN

@@ -82,11 +82,11 @@ export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult 
     y: (wrist.y + landmarks[9].y) / 2,
   }
 
-  const thumbExtended = Math.abs(thumbTip.x - thumbMcp.x) > 0.04
-
   // Finger spread: index-tip to pinky-tip distance, normalized by hand size (wrist→middle MCP).
   // Together ≈ 0.4–0.55, spread wide ≈ 0.75–1.0+; threshold 0.65 gives a clear gap.
   const handSize   = euclidean2D(landmarks[WRIST], landmarks[9])
+
+  const thumbExtended = handSize > 0.01 && (Math.abs(thumbTip.x - thumbMcp.x) / handSize) > 0.15
   const spreadDist = euclidean2D(landmarks[INDEX_TIP], landmarks[PINKY_TIP])
   const isFingersSpread = handSize > 0.01 && (spreadDist / handSize) >= 0.65
 
