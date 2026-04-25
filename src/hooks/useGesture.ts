@@ -328,6 +328,7 @@ export function useGesture(
           cancelSince.current = null
         }
         if (cancelSince.current !== null && performance.now() - cancelSince.current >= CANCEL_MS) {
+          useGameStore.getState().addGestureLog('Cancel — selection cleared')
           useGameStore.getState().setGame({ selectedSquare: null, legalTargets: [] })
           useGameStore.getState().setSweepPreviewSquare(null)
           useGameStore.getState().setKnightPreviewSquares([])
@@ -343,7 +344,7 @@ export function useGesture(
           knightSeq.current = null
           knightGestureRef.current = null
           knightCooldownUntil.current = 0
-          cancelCooldownUntil.current = performance.now() + 700  // 700ms cooldown after cancel
+          cancelCooldownUntil.current = performance.now() + 1500  // 1500ms cooldown after cancel
           setGestureState('idle')
           return
         }
@@ -402,6 +403,7 @@ export function useGesture(
                   } else if (performance.now() - sweepStillSince.current >= SWEEP_STOP_MS) {
                     // Commit the move
                     if (onDropSquare.current && grabbedSquareRef.current) {
+                      useGameStore.getState().addGestureLog(`Sweep commit: ${grabbedSquareRef.current} → ${target}`)
                       onDropSquare.current(grabbedSquareRef.current, target)
                     }
                     useGameStore.getState().setSweepPreviewSquare(null)
@@ -437,6 +439,7 @@ export function useGesture(
 
             // Expire timed-out sequence
             if (knightSeq.current && performance.now() - knightSeq.current.since > KNIGHT_SEQ_MS) {
+              useGameStore.getState().addGestureLog(`Knight sequence expired (>${KNIGHT_SEQ_MS}ms)`)
               knightSeq.current = null
               useGameStore.getState().setKnightPreviewSquares([])
             }
@@ -469,9 +472,9 @@ export function useGesture(
                     // First gesture — start sequence and preview which squares are reachable
                     knightSeq.current = { first: dir, since: performance.now() }
                     const { selectedSquare: sel, legalTargets: legal } = useGameStore.getState().game
-                    if (sel) useGameStore.getState().setKnightPreviewSquares(
-                      knightLegalForFirstGesture(sel, legal, dir, playerSide)
-                    )
+                    const previews = sel ? knightLegalForFirstGesture(sel, legal, dir, playerSide) : []
+                    if (sel) useGameStore.getState().setKnightPreviewSquares(previews)
+                    useGameStore.getState().addGestureLog(`Knight 1st gesture: ${dir} → previewing ${previews.join(', ') || 'none'}`)
                   } else {
                     const firstAxis  = knightSeq.current.first.startsWith('jump') ? 'jump' : 'turn'
                     const secondAxis = dir.startsWith('jump') ? 'jump' : 'turn'
@@ -481,6 +484,9 @@ export function useGesture(
                       const target = sel
                         ? findKnightTarget(sel, legal, knightSeq.current.first, dir, playerSide)
                         : null
+                      useGameStore.getState().addGestureLog(
+                        `Knight 2nd gesture: ${dir} → move: ${sel} → ${target ?? 'illegal'}`
+                      )
                       if (target && onDropSquare.current && grabbedSquareRef.current) {
                         onDropSquare.current(grabbedSquareRef.current, target)
                       }
@@ -493,6 +499,7 @@ export function useGesture(
                       return
                     } else {
                       // Same axis — restart sequence with the new gesture
+                      useGameStore.getState().addGestureLog(`Knight sequence restart: ${dir} (same axis)`)
                       knightSeq.current = { first: dir, since: performance.now() }
                       const { selectedSquare: sel, legalTargets: legal } = useGameStore.getState().game
                       if (sel) useGameStore.getState().setKnightPreviewSquares(
@@ -570,6 +577,7 @@ export function useGesture(
           if (onSelectSquare.current) {
             const selected = onSelectSquare.current(targetSq)
             if (selected) {
+              useGameStore.getState().addGestureLog(`Gesture: ${cur.pieceType.toUpperCase()} → select ${targetSq} (auto)`)
               // Start cooldown — user needs 600ms to lower arm to rest before sweep begins
               if (cur.pieceType === 'b') {
                 sweepCooldownUntil.current = performance.now() + SWEEP_COOL_MS
@@ -604,6 +612,7 @@ export function useGesture(
             if (targetSq && onSelectSquare.current) {
               const selected = onSelectSquare.current(targetSq)
               if (selected) {
+                useGameStore.getState().addGestureLog(`Gesture: ${cur.pieceType.toUpperCase()} → flick → select ${targetSq}`)
                 // Start cooldown — user needs 600ms to lower arm to rest before sweep begins
                 if (cur.pieceType === 'b') {
                   sweepCooldownUntil.current = performance.now() + SWEEP_COOL_MS

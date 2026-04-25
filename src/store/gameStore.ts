@@ -95,6 +95,10 @@ interface ChessMoveStore {
   // Knight dual-gesture sequence — preview reachable squares after first gesture
   knightPreviewSquares: string[]
   setKnightPreviewSquares: (squares: string[]) => void
+
+  // Gesture recognition log — chat-style debug feed
+  gestureLog: Array<{ id: number; time: string; text: string }>
+  addGestureLog: (text: string) => void
 }
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -151,7 +155,7 @@ export const useGameStore = create<ChessMoveStore>((set) => ({
   },
 
   // Phase 1.5 — Arm tracking mode
-  armModeEnabled: false,
+  armModeEnabled: true,
   setArmModeEnabled: (armModeEnabled) => set({ armModeEnabled }),
   detectedPieceType: null,
   armConfidence: 0,
@@ -171,4 +175,14 @@ export const useGameStore = create<ChessMoveStore>((set) => ({
 
   knightPreviewSquares: [],
   setKnightPreviewSquares: (knightPreviewSquares) => set({ knightPreviewSquares }),
+
+  gestureLog: [],
+  addGestureLog: (text) => set((s) => {
+    const id = Date.now() + Math.random()
+    const now = new Date()
+    const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`
+    const entry = { id, time, text }
+    const log = [entry, ...s.gestureLog].slice(0, 50)  // keep latest 50
+    return { gestureLog: log }
+  }),
 }))

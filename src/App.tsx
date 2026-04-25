@@ -8,7 +8,7 @@ import { useGesture } from './hooks/useGesture'
 import { ChessBoard } from './components/Board/ChessBoard'
 import { CameraFeed } from './components/Vision/CameraFeed'
 import { HandCursor } from './components/Cursor/HandCursor'
-import { EvalBar } from './components/HUD/EvalBar'
+import { GestureLog } from './components/HUD/GestureLog'
 import { MoveHistory } from './components/HUD/MoveHistory'
 import { StatusOverlay } from './components/HUD/StatusOverlay'
 import { ArmModePanel } from './components/HUD/ArmModePanel'
@@ -373,7 +373,7 @@ const GameScreen: React.FC = () => {
             {gestureState.charAt(0).toUpperCase() + gestureState.slice(1)}
           </div>
         </div>
-        <EvalBar />
+        <GestureLog />
       </aside>
 
         {/* Center — board */}

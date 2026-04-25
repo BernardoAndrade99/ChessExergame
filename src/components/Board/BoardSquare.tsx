@@ -82,9 +82,10 @@ export const BoardSquare: React.FC<BoardSquareProps> = ({
         <div style={{
           position: 'absolute',
           inset: 0,
-          border: '3px solid rgba(139,92,246,0.85)',
+          border: '4px solid rgba(139,92,246,1)',
           borderRadius: '4px',
-          boxShadow: 'inset 0 0 10px rgba(139,92,246,0.4)',
+          background: 'rgba(139,92,246,0.25)',
+          boxShadow: 'inset 0 0 16px rgba(139,92,246,0.7), 0 0 8px rgba(139,92,246,0.6)',
           pointerEvents: 'none',
         }} />
       )}
