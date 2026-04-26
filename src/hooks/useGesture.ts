@@ -24,6 +24,9 @@ const KNIGHT_GESTURE_MS      = 120   // ms a pose must be held before it registe
 const HIP_VIS_TURN_THR       = 0.35  // hip visibility below this = body turned sideways
 const HIP_VIS_STABLE_THR     = 0.60  // opposite hip must stay above this to confirm turn direction
 const KNIGHT_COOLDOWN_MS     = 800   // ms after a knight move before a new sequence can start
+const HIP_LIFTOFF_VEL        = 0.008 // hip midpoint Y velocity (normalized/frame) to detect liftoff
+const HIP_LAND_VEL           = 0.004 // hip midpoint Y velocity below which = landed
+const JUMP_LATCH_MS          = 300   // ms to hold a detected jump direction for the debounce window
 
 type KnightDir = 'jump_fwd' | 'jump_back' | 'turn_left' | 'turn_right'
 
@@ -221,7 +224,12 @@ export function useGesture(
   const lastWristRef        = useRef<{ x: number; y: number } | null>(null)  // for velocity
   const sweepStillSince     = useRef<number | null>(null)  // timestamp when arm first went still on target
 
-  const hipSpanBaselineRef  = useRef<number | null>(null)  // EMA of hip span for jump detection
+  const hipPrevYRef         = useRef<number | null>(null)          // previous hip midY for velocity
+  const hipPhaseRef         = useRef<'idle' | 'airborne'>('idle')  // jump phase state machine
+  const hipJumpAnchorRef    = useRef<{ span: number; y: number } | null>(null)  // liftoff snapshot
+  const jumpDirLatchRef     = useRef<{ dir: KnightDir; until: number } | null>(null)  // post-landing latch
+  const lastHipYRef         = useRef<number | null>(null)           // last valid hip midY (survives arm dropout)
+  const lastHipSpanRef      = useRef<number | null>(null)           // last valid hip span (survives arm dropout)
   const knightSeq = useRef<{ first: KnightDir; since: number } | null>(null)  // active sequence
   const knightCooldownUntil = useRef(0)   // timestamp: ignore new sequences until after this
   const knightGestureRef    = useRef<{ dir: KnightDir; since: number; processed: boolean } | null>(null)
@@ -269,7 +277,12 @@ export function useGesture(
         sweepStillSince.current = null
         knightSeq.current = null
         knightGestureRef.current = null
-        hipSpanBaselineRef.current = null
+        hipPrevYRef.current = null
+        hipPhaseRef.current = 'idle'
+        hipJumpAnchorRef.current = null
+        jumpDirLatchRef.current = null
+        lastHipYRef.current = null
+        lastHipSpanRef.current = null
         knightCooldownUntil.current = 0
         setGestureState('idle')
         noHandSince.current = null
@@ -343,6 +356,12 @@ export function useGesture(
           sweepStillSince.current = null
           knightSeq.current = null
           knightGestureRef.current = null
+          hipPrevYRef.current = null
+          hipPhaseRef.current = 'idle'
+          hipJumpAnchorRef.current = null
+          jumpDirLatchRef.current = null
+          lastHipYRef.current = null
+          lastHipSpanRef.current = null
           knightCooldownUntil.current = 0
           cancelCooldownUntil.current = performance.now() + 1500  // 1500ms cooldown after cancel
           setGestureState('idle')
@@ -350,6 +369,54 @@ export function useGesture(
         }
 
         // ── Bishop arm sweep ──────────────────────────────────────────────
+        // ── Jump phase machine — runs every frame using cached shoulder values ──
+        // Shoulders are reliable even when lower body is out of frame.
+        // Only update the cache when both shoulders have sufficient visibility.
+        const SHOULDER_VIS_CACHE_MIN = 0.55
+        if (arms
+          && (arms.leftShoulder.visibility  ?? 0) > SHOULDER_VIS_CACHE_MIN
+          && (arms.rightShoulder.visibility ?? 0) > SHOULDER_VIS_CACHE_MIN
+        ) {
+          lastHipYRef.current  = (arms.leftShoulder.y + arms.rightShoulder.y) / 2
+          lastHipSpanRef.current = Math.abs(arms.leftShoulder.x - arms.rightShoulder.x)
+        }
+        const cachedHipY    = lastHipYRef.current
+        const cachedHipSpan = lastHipSpanRef.current
+        if (cachedHipY !== null && cachedHipSpan !== null) {
+          const hipVelY = hipPrevYRef.current !== null ? cachedHipY - hipPrevYRef.current : 0
+          hipPrevYRef.current = cachedHipY
+
+          if (hipPhaseRef.current === 'idle' && hipVelY < -HIP_LIFTOFF_VEL) {
+            hipPhaseRef.current = 'airborne'
+            hipJumpAnchorRef.current = { span: cachedHipSpan, y: cachedHipY }
+            useGameStore.getState().addGestureLog(`Jump liftoff (vel=${hipVelY.toFixed(4)}, span=${cachedHipSpan.toFixed(3)})`)
+          } else if (hipPhaseRef.current === 'airborne') {
+            const anchor = hipJumpAnchorRef.current!
+            if (cachedHipY >= anchor.y && Math.abs(hipVelY) < HIP_LAND_VEL) {
+              const resolvedDir: KnightDir = (cachedHipSpan >= anchor.span) ? 'jump_fwd' : 'jump_back'
+              useGameStore.getState().addGestureLog(`Jump landed: ${resolvedDir} (Δspan=${(cachedHipSpan - anchor.span).toFixed(3)})`)
+              jumpDirLatchRef.current = { dir: resolvedDir, until: performance.now() + JUMP_LATCH_MS }
+              // Immediately show reachable squares for this jump direction
+              const { selectedSquare: jumpSel, legalTargets: jumpLegal } = useGameStore.getState().game
+              if (jumpSel) {
+                const chess = new Chess(useGameStore.getState().game.fen)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const jumpPiece = chess.get(jumpSel as any)
+                if (jumpPiece?.type === 'n') {
+                  useGameStore.getState().setKnightPreviewSquares(
+                    knightLegalForFirstGesture(jumpSel, jumpLegal, resolvedDir, playerSide)
+                  )
+                }
+              }
+              hipPhaseRef.current = 'idle'
+              hipJumpAnchorRef.current = null
+            }
+          }
+        }
+        if (jumpDirLatchRef.current && performance.now() > jumpDirLatchRef.current.until) {
+          jumpDirLatchRef.current = null
+        }
+
         const { selectedSquare, legalTargets, fen } = useGameStore.getState().game
         if (selectedSquare && arms) {
           const chess = new Chess(fen)
@@ -424,18 +491,11 @@ export function useGesture(
                 sweepStillSince.current = null
               }
             }
-          } else if (piece?.type === 'n' && arms) {
+          } else if (piece?.type === 'n') {
             // ── Knight dual-gesture sequence ───────────────────────────────
             useGameStore.getState().setSweepPreviewSquare(null)
 
-            const hipSpan = Math.abs(arms.leftHip.x - arms.rightHip.x)
-
-            // Update EMA baseline slowly — only when outside a sequence and cooldown
-            if (!knightSeq.current && performance.now() > knightCooldownUntil.current) {
-              hipSpanBaselineRef.current = hipSpanBaselineRef.current === null
-                ? hipSpan
-                : hipSpanBaselineRef.current * 0.97 + hipSpan * 0.03
-            }
+            // Phase machine already ran above (outside arms guard) — just handle sequence here
 
             // Expire timed-out sequence
             if (knightSeq.current && performance.now() - knightSeq.current.since > KNIGHT_SEQ_MS) {
@@ -445,16 +505,10 @@ export function useGesture(
             }
 
             // Classify current-frame gesture
-            const baseline = hipSpanBaselineRef.current ?? hipSpan
-            let frameDir: KnightDir | null = null
-            if (baseline > 0.01) {
-              const rel = (hipSpan - baseline) / baseline
-              if      (rel > 0) frameDir = 'jump_fwd'
-              else if (rel < 0) frameDir = 'jump_back'
-            }
+            let frameDir: KnightDir | null = jumpDirLatchRef.current?.dir ?? null
             if (!frameDir) {
-              const leftVis  = arms.leftHip.visibility  ?? 1
-              const rightVis = arms.rightHip.visibility ?? 1
+              const leftVis  = arms.leftShoulder.visibility  ?? 1
+              const rightVis = arms.rightShoulder.visibility ?? 1
               if      (rightVis < HIP_VIS_TURN_THR && leftVis  > HIP_VIS_STABLE_THR) frameDir = 'turn_right'
               else if (leftVis  < HIP_VIS_TURN_THR && rightVis > HIP_VIS_STABLE_THR) frameDir = 'turn_left'
             }

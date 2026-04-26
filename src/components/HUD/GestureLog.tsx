@@ -31,17 +31,17 @@ function entryIcon(text: string): string {
 
 export const GestureLog: React.FC = () => {
   const gestureLog = useGameStore(s => s.gestureLog)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Scroll to top (newest entry is first) on each new log
+  // column-reverse means DOM top = visual bottom = newest entry; scrollTop=0 keeps newest visible
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [gestureLog.length])
 
   return (
     <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div className="card-title">Gesture Log</div>
-      <div style={{
+      <div ref={scrollRef} style={{
         flex: 1,
         overflowY: 'auto',
         display: 'flex',
@@ -73,7 +73,6 @@ export const GestureLog: React.FC = () => {
             </div>
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
     </div>
   )
