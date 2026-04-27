@@ -16,6 +16,7 @@ import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 
 // Landmark indices we care about
 export const POSE_LANDMARKS = {
+  NOSE:           0,
   LEFT_SHOULDER:  11,
   RIGHT_SHOULDER: 12,
   LEFT_ELBOW:     13,
@@ -27,6 +28,7 @@ export const POSE_LANDMARKS = {
 } as const
 
 export interface ArmLandmarks {
+  nose:          NormalizedLandmark
   leftShoulder:  NormalizedLandmark
   rightShoulder: NormalizedLandmark
   leftElbow:     NormalizedLandmark
@@ -71,6 +73,7 @@ export function useMediaPipePose({
           // Ensure all required landmarks exist
           if (lm.length > 24) {
             onResults({
+              nose:          lm[POSE_LANDMARKS.NOSE],
               leftShoulder:  lm[POSE_LANDMARKS.LEFT_SHOULDER],
               rightShoulder: lm[POSE_LANDMARKS.RIGHT_SHOULDER],
               leftElbow:     lm[POSE_LANDMARKS.LEFT_ELBOW],

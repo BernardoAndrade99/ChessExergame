@@ -21,8 +21,7 @@ const ANCHOR_SETTLE_MS    = 300    // ms arm must be still to lock the sweep anc
 
 const KNIGHT_SEQ_MS          = 1200  // ms window after first knight gesture to complete the sequence
 const KNIGHT_GESTURE_MS      = 120   // ms a pose must be held before it registers
-const HIP_VIS_TURN_THR       = 0.35  // hip visibility below this = body turned sideways
-const HIP_VIS_STABLE_THR     = 0.60  // opposite hip must stay above this to confirm turn direction
+const NOSE_TURN_THR           = 0.07  // nose X offset from shoulder midpoint to detect body turn
 const KNIGHT_COOLDOWN_MS     = 800   // ms after a knight move before a new sequence can start
 const HIP_LIFTOFF_VEL        = 0.008 // hip midpoint Y velocity (normalized/frame) to detect liftoff
 const HIP_LAND_VEL           = 0.004 // hip midpoint Y velocity below which = landed
@@ -230,6 +229,9 @@ export function useGesture(
   const jumpDirLatchRef     = useRef<{ dir: KnightDir; until: number } | null>(null)  // post-landing latch
   const lastHipYRef         = useRef<number | null>(null)           // last valid hip midY (survives arm dropout)
   const lastHipSpanRef      = useRef<number | null>(null)           // last valid hip span (survives arm dropout)
+  const lastNoseOffsetRef = useRef<number>(0)  // cached: nose.x minus shoulder midX (turn detection)
+  const lastLoggedNoseOffsetRef = useRef<number>(999)  // last value we actually logged (throttle debug spam)
+  const lastStateSummaryRef = useRef<string>('')  // last printed state summary (throttle debug spam)
   const knightSeq = useRef<{ first: KnightDir; since: number } | null>(null)  // active sequence
   const knightCooldownUntil = useRef(0)   // timestamp: ignore new sequences until after this
   const knightGestureRef    = useRef<{ dir: KnightDir; since: number; processed: boolean } | null>(null)
@@ -371,18 +373,25 @@ export function useGesture(
         // ── Bishop arm sweep ──────────────────────────────────────────────
         // ── Jump phase machine — runs every frame using cached shoulder values ──
         // Shoulders are reliable even when lower body is out of frame.
-        // Only update the cache when both shoulders have sufficient visibility.
+        // Gate: only run jump detection when BOTH shoulders are clearly visible.
+        // If one shoulder is hidden (body turned sideways), reset velocity baseline so
+        // turning never produces a false liftoff from the Y midpoint shift.
         const SHOULDER_VIS_CACHE_MIN = 0.55
-        if (arms
+        // Cache nose offset every frame arms is available (needed for turn detection)
+        if (arms) {
+          const shoulderMidX = (arms.leftShoulder.x + arms.rightShoulder.x) / 2
+          lastNoseOffsetRef.current = arms.nose.x - shoulderMidX
+        }
+        const shouldersGood = !!(arms
           && (arms.leftShoulder.visibility  ?? 0) > SHOULDER_VIS_CACHE_MIN
           && (arms.rightShoulder.visibility ?? 0) > SHOULDER_VIS_CACHE_MIN
-        ) {
-          lastHipYRef.current  = (arms.leftShoulder.y + arms.rightShoulder.y) / 2
-          lastHipSpanRef.current = Math.abs(arms.leftShoulder.x - arms.rightShoulder.x)
-        }
-        const cachedHipY    = lastHipYRef.current
-        const cachedHipSpan = lastHipSpanRef.current
-        if (cachedHipY !== null && cachedHipSpan !== null) {
+        )
+        if (shouldersGood) {
+          lastHipYRef.current    = (arms!.leftShoulder.y + arms!.rightShoulder.y) / 2
+          lastHipSpanRef.current = Math.abs(arms!.leftShoulder.x - arms!.rightShoulder.x)
+
+          const cachedHipY    = lastHipYRef.current!
+          const cachedHipSpan = lastHipSpanRef.current!
           const hipVelY = hipPrevYRef.current !== null ? cachedHipY - hipPrevYRef.current : 0
           hipPrevYRef.current = cachedHipY
 
@@ -396,28 +405,80 @@ export function useGesture(
               const resolvedDir: KnightDir = (cachedHipSpan >= anchor.span) ? 'jump_fwd' : 'jump_back'
               useGameStore.getState().addGestureLog(`Jump landed: ${resolvedDir} (Δspan=${(cachedHipSpan - anchor.span).toFixed(3)})`)
               jumpDirLatchRef.current = { dir: resolvedDir, until: performance.now() + JUMP_LATCH_MS }
-              // Immediately show reachable squares for this jump direction
+              // Immediately show reachable squares and register first gesture for this jump direction.
+              // Don't wait for the 120ms knight-block debounce — that creates a window where the
+              // sequence can fail silently if the cooldown expires between preview and registration.
               const { selectedSquare: jumpSel, legalTargets: jumpLegal } = useGameStore.getState().game
-              if (jumpSel) {
+              if (jumpSel && performance.now() > knightCooldownUntil.current) {
                 const chess = new Chess(useGameStore.getState().game.fen)
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const jumpPiece = chess.get(jumpSel as any)
                 if (jumpPiece?.type === 'n') {
-                  useGameStore.getState().setKnightPreviewSquares(
-                    knightLegalForFirstGesture(jumpSel, jumpLegal, resolvedDir, playerSide)
-                  )
+                  // Clear any expired sequence before registering
+                  if (knightSeq.current && performance.now() - knightSeq.current.since > KNIGHT_SEQ_MS) {
+                    knightSeq.current = null
+                    useGameStore.getState().setKnightPreviewSquares([])
+                  }
+                  if (!knightSeq.current) {
+                    const previews = knightLegalForFirstGesture(jumpSel, jumpLegal, resolvedDir, playerSide)
+                    useGameStore.getState().setKnightPreviewSquares(previews)
+                    knightSeq.current = { first: resolvedDir, since: performance.now() }
+                    useGameStore.getState().addGestureLog(`Knight 1st gesture: ${resolvedDir} → previewing ${previews.join(', ') || 'none'}`)
+                  }
                 }
               }
               hipPhaseRef.current = 'idle'
               hipJumpAnchorRef.current = null
             }
           }
+        } else {
+          // One shoulder hidden — body is turning sideways. Reset velocity so that
+          // when shoulders become visible again we don't get a spurious liftoff.
+          hipPrevYRef.current = null
         }
         if (jumpDirLatchRef.current && performance.now() > jumpDirLatchRef.current.until) {
           jumpDirLatchRef.current = null
         }
 
+        // ── Turn classification — runs every frame using cached nose offset ──
+        // nose.x - shoulderMidX: negative = turned one way, positive = the other.
+        // Runs outside the arms guard so it works even when pose drops mid-turn.
+        if (!jumpDirLatchRef.current) {
+          const noseOffset = lastNoseOffsetRef.current
+          if (Math.abs(noseOffset - lastLoggedNoseOffsetRef.current) > 0.01) {
+            useGameStore.getState().addGestureLog(`NoseOffset: ${noseOffset.toFixed(3)}`)
+            lastLoggedNoseOffsetRef.current = noseOffset
+          }
+          let turnDir: KnightDir | null = null
+          if      (noseOffset < -NOSE_TURN_THR) turnDir = 'turn_right'
+          else if (noseOffset >  NOSE_TURN_THR) turnDir = 'turn_left'
+          if (turnDir !== null) {
+            const cur = knightGestureRef.current
+            if (!cur || cur.dir !== turnDir) {
+              knightGestureRef.current = { dir: turnDir, since: performance.now(), processed: false }
+            }
+          } else if (knightGestureRef.current?.dir.startsWith('turn')) {
+            knightGestureRef.current = null
+          }
+        }
+
         const { selectedSquare, legalTargets, fen } = useGameStore.getState().game
+
+        // ── Debug state summary — always print when in grabbing state ──────
+        {
+          const latchStr  = jumpDirLatchRef.current  ? `latch:${jumpDirLatchRef.current.dir}(${Math.round(jumpDirLatchRef.current.until - performance.now())}ms)` : 'latch:none'
+          const gestStr   = knightGestureRef.current ? `gest:${knightGestureRef.current.dir}(${Math.round(performance.now()-knightGestureRef.current.since)}ms,proc=${knightGestureRef.current.processed})` : 'gest:none'
+          const seqStr    = knightSeq.current        ? `seq:${knightSeq.current.first}(${Math.round(performance.now()-knightSeq.current.since)}ms)` : 'seq:none'
+          const armsStr   = `arms:${arms ? 'ok' : 'NULL'}`
+          const noseStr   = `nose:${lastNoseOffsetRef.current.toFixed(3)}`
+          const selStr    = `sel:${selectedSquare ?? 'none'}`
+          const summary = `${armsStr} | ${noseStr} | ${latchStr} | ${gestStr} | ${seqStr} | ${selStr}`
+          if (summary !== lastStateSummaryRef.current) {
+            lastStateSummaryRef.current = summary
+          }
+          useGameStore.getState().addGestureLog(`[SM] ${summary}`)
+        }
+
         if (selectedSquare && arms) {
           const chess = new Chess(fen)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -491,11 +552,22 @@ export function useGesture(
                 sweepStillSince.current = null
               }
             }
-          } else if (piece?.type === 'n') {
-            // ── Knight dual-gesture sequence ───────────────────────────────
+          } else if (piece?.type !== 'n') {
+            // Non-bishop, non-knight piece — clear any stale previews
             useGameStore.getState().setSweepPreviewSquare(null)
+            useGameStore.getState().setKnightPreviewSquares([])
+          }
+        }
 
-            // Phase machine already ran above (outside arms guard) — just handle sequence here
+        // ── Knight dual-gesture sequence — runs without requiring arms ────
+        // Jump and turn detection both run outside the arms guard, so the
+        // sequence should not stall just because pose drops mid-gesture.
+        if (selectedSquare) {
+          const chess = new Chess(fen)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const piece = chess.get(selectedSquare as any)
+          if (piece?.type === 'n') {
+            useGameStore.getState().setSweepPreviewSquare(null)
 
             // Expire timed-out sequence
             if (knightSeq.current && performance.now() - knightSeq.current.since > KNIGHT_SEQ_MS) {
@@ -505,16 +577,16 @@ export function useGesture(
             }
 
             // Classify current-frame gesture
-            let frameDir: KnightDir | null = jumpDirLatchRef.current?.dir ?? null
-            if (!frameDir) {
-              const leftVis  = arms.leftShoulder.visibility  ?? 1
-              const rightVis = arms.rightShoulder.visibility ?? 1
-              if      (rightVis < HIP_VIS_TURN_THR && leftVis  > HIP_VIS_STABLE_THR) frameDir = 'turn_right'
-              else if (leftVis  < HIP_VIS_TURN_THR && rightVis > HIP_VIS_STABLE_THR) frameDir = 'turn_left'
-            }
+            const frameDir: KnightDir | null = jumpDirLatchRef.current?.dir
+              ?? (knightGestureRef.current?.dir.startsWith('turn') ? knightGestureRef.current.dir : null)
+
+            // If this jump was already registered as first gesture at landing, skip the debounce
+            // path entirely — writing to knightGestureRef for a jump direction interferes with
+            // the turn classifier's ownership of that ref.
+            const jumpAlreadyFirst = !!(jumpDirLatchRef.current && knightSeq.current?.first === jumpDirLatchRef.current.dir)
 
             // Debounce: hold gesture for KNIGHT_GESTURE_MS before registering
-            if (frameDir !== null) {
+            if (frameDir !== null && !jumpAlreadyFirst) {
               const cur = knightGestureRef.current
               if (!cur || cur.dir !== frameDir) {
                 knightGestureRef.current = { dir: frameDir, since: performance.now(), processed: false }
@@ -563,13 +635,10 @@ export function useGesture(
                   }
                 }
               }
-            } else {
+            } else if (frameDir === null && !knightGestureRef.current?.dir.startsWith('turn')) {
+              // Only clear if it's a jump direction — turn classifier owns turn entries
               knightGestureRef.current = null
             }
-          } else {
-            // Non-bishop, non-knight piece — clear any stale previews
-            useGameStore.getState().setSweepPreviewSquare(null)
-            useGameStore.getState().setKnightPreviewSquares([])
           }
         }
 
