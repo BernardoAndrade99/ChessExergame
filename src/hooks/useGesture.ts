@@ -16,8 +16,6 @@ const SWEEP_DEAD_ZONE     = 0.01   // min wrist displacement before sweep activa
 const SWEEP_MAX_STEPS     = 5      // full arm raise (wrist to shoulder dist) = this many squares
 const SWEEP_STOP_VEL      = 0.006  // wrist velocity threshold for "arm stopped" (normalized/frame)
 const SWEEP_STOP_MS       = 500    // ms of stillness required to commit a sweep
-const SWEEP_COOL_MS       = 600    // ms cooldown after selection before anchor can lock
-const ANCHOR_SETTLE_MS    = 300    // ms arm must be still to lock the sweep anchor
 
 const KNIGHT_SEQ_MS          = 1200  // ms window after first knight gesture to complete the sequence
 const KNIGHT_GESTURE_MS      = 120   // ms a pose must be held before it registers
@@ -138,7 +136,7 @@ function knightLegalForFirstGesture(
 function detectHandGesture(gesture: ReturnType<typeof import('../lib/gestureClassifier').classifyGesture>): string | null {
   if (gesture.isLShape)      return 'n'  // Knight:  thumb + index
   if (gesture.isPeaceSign)   return 'b'  // Bishop:  index + middle
-  // if (gesture.isOneIndex)    return 'p'  // Pawn:    index only (disabled — conflicts with knight)
+  if (gesture.isOneIndex)    return 'p'  // Pawn:    index only (no thumb, index only)
   if (gesture.isFist)        return 'r'  // Rook:    fist
   if (gesture.isFourFingers) return 'k'  // King:    four fingers, no thumb
   if (gesture.isOpenPalm)    return 'q'  // Queen:   all five
@@ -486,71 +484,46 @@ export function useGesture(
           if (piece?.type === 'b') {
             const wrist = arms.rightWrist
 
-            // Always track velocity for phase detection
+            // Track wrist velocity to detect when arm is still (commit trigger)
             const vx = lastWristRef.current ? -(wrist.x - lastWristRef.current.x) : 0
             const vy = lastWristRef.current ?   wrist.y - lastWristRef.current.y  : 0
             const velocity = Math.sqrt(vx * vx + vy * vy)
             lastWristRef.current = { x: wrist.x, y: wrist.y }
 
-            // Phase 1: cooldown — arm descending to rest, no sweep yet
-            if (performance.now() < sweepCooldownUntil.current) {
-              useGameStore.getState().setSweepPreviewSquare(null)
-            // Phase 2: waiting for arm to settle before locking anchor
-            } else if (!wristAnchorRef.current) {
+            // Pure aiming: shoulder→wrist direction determines target square
+            const sdx = -(wrist.x - arms.rightShoulder.x)  // mirror X (camera is mirrored)
+            const sdy =   wrist.y - arms.rightShoulder.y
+            const sweepMag = Math.sqrt(sdx * sdx + sdy * sdy)
+            // Shoulder span as body-size-invariant reference for step-count estimation
+            const shoulderSpan = Math.abs(arms.leftShoulder.x - arms.rightShoulder.x) || 0.1
+
+            const target = findBishopSweepTarget(
+              selectedSquare, legalTargets, sdx, sdy, sweepMag, shoulderSpan, playerSide
+            )
+            useGameStore.getState().setSweepPreviewSquare(target)
+
+            if (target) {
               if (velocity < SWEEP_STOP_VEL) {
-                if (anchorSettleSince.current === null) {
-                  anchorSettleSince.current = performance.now()
-                } else if (performance.now() - anchorSettleSince.current >= ANCHOR_SETTLE_MS) {
-                  // Arm has been still long enough — lock anchor here
-                  wristAnchorRef.current = { x: wrist.x, y: wrist.y }
-                  // Compute body-size-invariant scale: distance from anchor to right shoulder
-                  const dsX = wrist.x - arms.rightShoulder.x
-                  const dsY = wrist.y - arms.rightShoulder.y
-                  sweepScaleRef.current = Math.sqrt(dsX * dsX + dsY * dsY) || 0.1
-                  anchorSettleSince.current = null
-                }
-              } else {
-                anchorSettleSince.current = null
-              }
-              useGameStore.getState().setSweepPreviewSquare(null)
-            // Phase 3: anchor locked — measure sweep displacement and show preview
-            } else {
-              const sdx = -(wrist.x - wristAnchorRef.current.x)
-              const sdy =   wrist.y - wristAnchorRef.current.y
-              const sweepMag = Math.sqrt(sdx * sdx + sdy * sdy)
-
-              const target = findBishopSweepTarget(
-                selectedSquare, legalTargets, sdx, sdy, sweepMag, sweepScaleRef.current, playerSide
-              )
-              useGameStore.getState().setSweepPreviewSquare(target)
-
-              if (target) {
-                if (velocity < SWEEP_STOP_VEL) {
-                  if (sweepStillSince.current === null) {
-                    sweepStillSince.current = performance.now()
-                  } else if (performance.now() - sweepStillSince.current >= SWEEP_STOP_MS) {
-                    // Commit the move
-                    if (onDropSquare.current && grabbedSquareRef.current) {
-                      useGameStore.getState().addGestureLog(`Sweep commit: ${grabbedSquareRef.current} → ${target}`)
-                      onDropSquare.current(grabbedSquareRef.current, target)
-                    }
-                    useGameStore.getState().setSweepPreviewSquare(null)
-                    sweepCooldownUntil.current = 0
-                    wristAnchorRef.current = null
-                    sweepScaleRef.current = 0
-                    lastWristRef.current   = null
-                    anchorSettleSince.current  = null
-                    sweepStillSince.current = null
-                    grabbedSquareRef.current = null
-                    setGestureState('idle')
-                    return
+                if (sweepStillSince.current === null) {
+                  sweepStillSince.current = performance.now()
+                } else if (performance.now() - sweepStillSince.current >= SWEEP_STOP_MS) {
+                  // Commit the move
+                  if (onDropSquare.current && grabbedSquareRef.current) {
+                    useGameStore.getState().addGestureLog(`Sweep commit: ${grabbedSquareRef.current} → ${target}`)
+                    onDropSquare.current(grabbedSquareRef.current, target)
                   }
-                } else {
+                  useGameStore.getState().setSweepPreviewSquare(null)
+                  lastWristRef.current   = null
                   sweepStillSince.current = null
+                  grabbedSquareRef.current = null
+                  setGestureState('idle')
+                  return
                 }
               } else {
                 sweepStillSince.current = null
               }
+            } else {
+              sweepStillSince.current = null
             }
           } else if (piece?.type !== 'n') {
             // Non-bishop, non-knight piece — clear any stale previews
@@ -701,15 +674,6 @@ export function useGesture(
             const selected = onSelectSquare.current(targetSq)
             if (selected) {
               useGameStore.getState().addGestureLog(`Gesture: ${cur.pieceType.toUpperCase()} → select ${targetSq} (auto)`)
-              // Start cooldown — user needs 600ms to lower arm to rest before sweep begins
-              if (cur.pieceType === 'b') {
-                sweepCooldownUntil.current = performance.now() + SWEEP_COOL_MS
-                wristAnchorRef.current = null
-                anchorSettleSince.current  = null
-                lastWristRef.current = poseLandmarksRef.current
-                  ? { x: poseLandmarksRef.current.rightWrist.x, y: poseLandmarksRef.current.rightWrist.y }
-                  : null
-              }
               grabbedSquareRef.current = targetSq
               setGestureState('grabbing')
             }
@@ -736,15 +700,6 @@ export function useGesture(
               const selected = onSelectSquare.current(targetSq)
               if (selected) {
                 useGameStore.getState().addGestureLog(`Gesture: ${cur.pieceType.toUpperCase()} → flick → select ${targetSq}`)
-                // Start cooldown — user needs 600ms to lower arm to rest before sweep begins
-                if (cur.pieceType === 'b') {
-                  sweepCooldownUntil.current = performance.now() + SWEEP_COOL_MS
-                  wristAnchorRef.current = null
-                  anchorSettleSince.current  = null
-                  lastWristRef.current = poseLandmarksRef.current
-                    ? { x: poseLandmarksRef.current.rightWrist.x, y: poseLandmarksRef.current.rightWrist.y }
-                    : null
-                }
                 grabbedSquareRef.current = targetSq
                 setGestureState('grabbing')
               }
