@@ -9,6 +9,7 @@ import { ChessBoard } from './components/Board/ChessBoard'
 import { CameraFeed } from './components/Vision/CameraFeed'
 import { HandCursor } from './components/Cursor/HandCursor'
 import { GestureLog } from './components/HUD/GestureLog'
+import { KnightDebugHud } from './components/HUD/KnightDebugHud'
 import { MoveHistory } from './components/HUD/MoveHistory'
 import { StatusOverlay } from './components/HUD/StatusOverlay'
 import { ArmModePanel } from './components/HUD/ArmModePanel'
@@ -161,11 +162,24 @@ const GameScreen: React.FC = () => {
     triggerFlash,
     setStockfish,
     armModeEnabled,
+    oneHandMode,
+    kingPawnStepMode,
   } = useGameStore()
   const { selectSquare, makeMove, makeMoveFromUci, resetGame: resetChess, loadFen } = useChessEngine()
   const { getBestMove, newGame } = useStockfish()
   const boardRef = useRef<HTMLDivElement>(null)
   const [landmarks, setLandmarks] = useState<NormalizedLandmark[] | null>(null)
+  const userLeftHandRef  = useRef<NormalizedLandmark[] | null>(null)  // user's physical left  hand
+  const userRightHandRef = useRef<NormalizedLandmark[] | null>(null)  // user's physical right hand
+  const handleLandmarks = useCallback((
+    lm: NormalizedLandmark[] | null,
+    userLeft: NormalizedLandmark[] | null,
+    userRight: NormalizedLandmark[] | null
+  ) => {
+    setLandmarks(lm)
+    userLeftHandRef.current  = userLeft
+    userRightHandRef.current = userRight
+  }, [])
   const poseLandmarksRef = useRef<ArmLandmarks | null>(null)
   const handlePoseLandmarks = useCallback((arms: ArmLandmarks | null) => {
     poseLandmarksRef.current = arms
@@ -269,7 +283,7 @@ const GameScreen: React.FC = () => {
   }, [stockfish.bestMove, gameMode, playerSide, game.turn, makeMoveFromUci, setStockfish])
 
   // ── Gesture handlers ──
-  const { registerHandlers } = useGesture(landmarks, poseLandmarksRef, boardRef as React.RefObject<HTMLElement>)
+  const { registerHandlers } = useGesture(landmarks, poseLandmarksRef, boardRef as React.RefObject<HTMLElement>, userLeftHandRef, userRightHandRef)
 
   const handleSelect = useCallback((sq: string): boolean => {
     return selectSquare(sq, gameMode === 'puzzle')
@@ -358,7 +372,7 @@ const GameScreen: React.FC = () => {
           {/* Camera with arm tracking classifer overlay */}
           <div style={{ position: 'relative' }}>
             <CameraFeed
-              onLandmarks={setLandmarks}
+              onLandmarks={handleLandmarks}
               onPoseLandmarks={handlePoseLandmarks}
               enabled
             />
@@ -373,6 +387,7 @@ const GameScreen: React.FC = () => {
             {gestureState.charAt(0).toUpperCase() + gestureState.slice(1)}
           </div>
         </div>
+        <KnightDebugHud />
         <GestureLog />
       </aside>
 
@@ -407,9 +422,20 @@ const GameScreen: React.FC = () => {
           <div className="text-sm text-muted" style={{ lineHeight: 2 }}>
             {armModeEnabled ? (
               <>
-                🤙 <strong>Hold L</strong> to highlight knights<br />
-                👉 <strong>Flick</strong> toward one to select it<br />
-                ↩️ <strong>Pinch cursor disabled</strong> in this mode<br />
+                🤌 <strong>Show piece gesture</strong> to highlight options<br />
+                {oneHandMode
+                  ? <>👉 <strong>Right-hand direction</strong> chooses between same-piece options<br /></>
+                  : <>🫲 <strong>Left/Right hand</strong> chooses left/right piece<br /></>}
+                {oneHandMode && <>✅ <strong>Close right hand</strong> to confirm selected piece<br /></>}
+                {oneHandMode
+                  ? <>✊ <strong>Close right hand</strong> to confirm drop<br /></>
+                  : <>✊ <strong>Close left hand</strong> to confirm drop<br /></>}
+                ✖️ <strong>Arms X while king grabbed</strong> to castle (when legal)<br />
+                ♟ <strong>Repeat pawn hold</strong> to cycle same-file pawns<br />
+                {kingPawnStepMode && !oneHandMode && <>🚶 <strong>King/Pawn step mode</strong> uses torso + mirrored pawn swipes<br /></>}
+                {(kingPawnStepMode && !oneHandMode)
+                  ? <>🐴 <strong>Knight</strong> uses jump + turn sequence<br /></>
+                  : <>🐴 <strong>Knight</strong> uses L-target aiming + {oneHandMode ? 'right' : 'left'}-hand confirm<br /></>}
               </>
             ) : (
               <>

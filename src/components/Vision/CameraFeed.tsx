@@ -13,7 +13,11 @@ import { PoseOverlay } from './PoseOverlay'
 import { useGameStore } from '../../store/gameStore'
 
 interface CameraFeedProps {
-  onLandmarks: (landmarks: NormalizedLandmark[] | null) => void
+  onLandmarks: (
+    landmarks: NormalizedLandmark[] | null,
+    userLeftLandmarks: NormalizedLandmark[] | null,
+    userRightLandmarks: NormalizedLandmark[] | null
+  ) => void
   onPoseLandmarks?: (arms: ArmLandmarks | null) => void
   enabled?: boolean
   showControls?: boolean
@@ -45,9 +49,13 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
   const fpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const { armModeEnabled } = useGameStore()
 
-  const handleResults = useCallback((lm: NormalizedLandmark[] | null) => {
+  const handleResults = useCallback((
+    lm: NormalizedLandmark[] | null,
+    userLeft: NormalizedLandmark[] | null,
+    userRight: NormalizedLandmark[] | null
+  ) => {
     setLandmarks(lm)
-    onLandmarks(lm)
+    onLandmarks(lm, userLeft, userRight)
     if (lm && !cameraActive) setCameraActive(true)
   }, [onLandmarks, cameraActive])
 

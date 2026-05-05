@@ -1,4 +1,4 @@
-﻿import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
+import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 
 // Landmark indices (MediaPipe Hands)
 const WRIST = 0
@@ -93,7 +93,10 @@ export function classifyGesture(landmarks: NormalizedLandmark[]): GestureResult 
   const allFourFingers = fingerStates.index && fingerStates.middle && fingerStates.ring && fingerStates.pinky
 
   const isLShape      = thumbExtended && fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
-  const isPeaceSign   = !thumbExtended && fingerStates.index && fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
+  // Bishop: index + middle extended, ring + pinky folded. No thumb constraint —
+  // thumb naturally spreads sideways during a peace sign and the X-axis check was
+  // incorrectly blocking detection. Pattern is already unique (knight needs thumb, pawn needs middle down).
+  const isPeaceSign   = fingerStates.index && fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
   const isOneIndex    = !thumbExtended && fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
   const isFist        = !thumbExtended && !fingerStates.index && !fingerStates.middle && !fingerStates.ring && !fingerStates.pinky
   // King:  four fingers extended, held together ("stop" hand)

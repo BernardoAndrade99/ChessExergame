@@ -4,7 +4,17 @@ import { BoardSquare } from './BoardSquare'
 import { useGameStore } from '../../store/gameStore'
 
 export const ChessBoard: React.FC = () => {
-  const { game, cursor, gestureState, playerSide, handGesturePieceType, sweepPreviewSquare, knightPreviewSquares } = useGameStore()
+  const {
+    game,
+    cursor,
+    gestureState,
+    playerSide,
+    oneHandMode,
+    handGesturePieceType,
+    oneHandPreviewSquare,
+    sweepPreviewSquare,
+    knightPreviewSquares,
+  } = useGameStore()
   const boardRef = useRef<HTMLDivElement>(null)
 
   const flipped = playerSide === 'black'
@@ -13,14 +23,18 @@ export const ChessBoard: React.FC = () => {
   const chess = new Chess(game.fen)
   const board = chess.board() // 8x8 array [row][col], row 0 = rank 8
 
-  // Highlight all current-player pieces of the gestured type
+  // Highlight candidates for gesture piece selection.
   const pieceHighlights = new Set<string>()
   if (handGesturePieceType) {
-    for (let r = 0; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
-        const p = board[r][c]
-        if (p && p.type === handGesturePieceType && p.color === game.turn) {
-          pieceHighlights.add(`${'abcdefgh'[c]}${8 - r}`)
+    if (oneHandMode) {
+      if (oneHandPreviewSquare) pieceHighlights.add(oneHandPreviewSquare)
+    } else {
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const p = board[r][c]
+          if (p && p.type === handGesturePieceType && p.color === game.turn) {
+            pieceHighlights.add(`${'abcdefgh'[c]}${8 - r}`)
+          }
         }
       }
     }

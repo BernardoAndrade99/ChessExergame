@@ -4,7 +4,14 @@ import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 
 interface UseMediaPipeHandsOptions {
   videoRef: React.RefObject<HTMLVideoElement>
-  onResults: (landmarks: NormalizedLandmark[] | null, worldLandmarks?: NormalizedLandmark[]) => void
+  // primaryLandmarks: whichever hand is active (for cursor/gesture)
+  // userLeftLandmarks:  user's physical left hand  (MediaPipe calls it "right" in mirrored selfie)
+  // userRightLandmarks: user's physical right hand (MediaPipe calls it "left"  in mirrored selfie)
+  onResults: (
+    primaryLandmarks: NormalizedLandmark[] | null,
+    userLeftLandmarks: NormalizedLandmark[] | null,
+    userRightLandmarks: NormalizedLandmark[] | null
+  ) => void
   enabled?: boolean
 }
 
@@ -76,10 +83,15 @@ export function useMediaPipeHands({
           }
 
           activeHandIndexRef.current = handIdx
-          onResults(result.landmarks[handIdx], result.worldLandmarks?.[handIdx])
+          // Note: this camera does NOT reverse handedness — MediaPipe "right" = user's RIGHT hand.
+          const mpRightIdx = result.handedness?.findIndex(h => h.some(c => c.categoryName?.toLowerCase() === 'right')) ?? -1
+          const mpLeftIdx  = result.handedness?.findIndex(h => h.some(c => c.categoryName?.toLowerCase() === 'left'))  ?? -1
+          const userLeftLm  = mpLeftIdx  >= 0 ? result.landmarks[mpLeftIdx]  : null  // user's left hand
+          const userRightLm = mpRightIdx >= 0 ? result.landmarks[mpRightIdx] : null  // user's right hand
+          onResults(result.landmarks[handIdx], userLeftLm, userRightLm)
         } else {
           activeHandIndexRef.current = 0
-          onResults(null)
+          onResults(null, null, null)
         }
       }
 
