@@ -15,7 +15,7 @@ import { StatusOverlay } from './components/HUD/StatusOverlay'
 import { ArmModePanel } from './components/HUD/ArmModePanel'
 import { CalibrationWizard } from './components/Calibration/CalibrationWizard'
 import { getPuzzlesBySide, DIFFICULTY_COLOR, KNIGHT_BISHOP_TEST_PUZZLE } from './lib/puzzles'
-import { SEQUENCES, DIFFICULTY_LABEL, DIFFICULTY_COLOR as SEQ_DIFF_COLOR } from './lib/sequences'
+import { SEQUENCES, DIFFICULTY_LABEL, DIFFICULTY_COLOR as SEQ_DIFF_COLOR, seqDuration } from './lib/sequences'
 import type { Sequence } from './lib/sequences'
 import { MiniBoard } from './components/Board/MiniBoard'
 import { DancePreviewScreen } from './components/DancePreview/DancePreviewScreen'
@@ -126,7 +126,7 @@ const SequencesScreen: React.FC = () => {
                 </div>
                 <div className="seq-card-dance">
                   <span className="seq-dance-icon">🕺</span>
-                  Dance: {seq.danceDuration}
+                  Dance: {seqDuration(seq.moves)}
                 </div>
               </div>
             </div>
