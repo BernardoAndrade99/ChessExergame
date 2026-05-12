@@ -1,73 +1,111 @@
-# React + TypeScript + Vite
+# ♟️ ChessExergame
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A gesture-controlled chess exergame that uses your **webcam** and **hand tracking** (MediaPipe) to let you play chess with physical movements. Built with React, TypeScript, and Vite.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🖥️ Prerequisites
 
-## React Compiler
+Before you start, make sure you have the following installed:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. **Node.js** (version 18 or higher recommended)
+   - Download from: https://nodejs.org/
+   - To check if already installed, open a terminal and run:
+     ```bash
+     node -v
+     ```
 
-## Expanding the ESLint configuration
+2. **npm** (comes bundled with Node.js)
+   - To verify:
+     ```bash
+     npm -v
+     ```
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+3. **A modern browser** with camera support (Chrome or Edge recommended)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+4. **A webcam** — required for hand gesture tracking
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🚀 Getting Started
+
+### 1. Clone or copy the project
+
+If you're getting this from Git:
+```bash
+git clone <repository-url>
+cd ChessExergame
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Or just copy the project folder to your PC.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 2. Install dependencies
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Open a terminal **inside the project folder** and run:
+```bash
+npm install
 ```
+
+This will download all required packages (React, MediaPipe, chess.js, Stockfish, etc.).
+
+> ⚠️ This may take a minute or two on the first run.
+
+### 3. Start the development server
+
+```bash
+npm run dev
+```
+
+You should see output like:
+```
+  VITE v6.x.x  ready in xxx ms
+
+  ➜  Local:   http://localhost:5173/
+```
+
+### 4. Open the app
+
+Open your browser and go to:
+```
+http://localhost:5173
+```
+
+> 🎥 When prompted, **allow camera access** — it is required for hand tracking to work.
+
+---
+
+## 📦 Tech Stack
+
+| Package | Purpose |
+|---|---|
+| React + TypeScript | UI framework |
+| Vite | Build tool & dev server |
+| MediaPipe Tasks Vision | Hand & pose gesture tracking |
+| chess.js | Chess logic and move validation |
+| Stockfish | Chess AI engine |
+| Zustand | State management |
+
+---
+
+## 🎮 How to Play
+
+- Use your **hands in front of the webcam** to control the game
+- Different hand gestures correspond to different chess pieces and actions
+- Follow the on-screen HUD for guidance
+
+---
+
+## 🛑 Stopping the Server
+
+Press `Ctrl + C` in the terminal where `npm run dev` is running.
+
+---
+
+## ❓ Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| `node` not found | Install Node.js from https://nodejs.org |
+| Camera not working | Allow camera permissions in the browser, make sure no other app is using it |
+| Page won't load | Make sure `npm run dev` is still running in the terminal |
+| Gestures not detected | Ensure good lighting and keep your hands visible to the camera |
