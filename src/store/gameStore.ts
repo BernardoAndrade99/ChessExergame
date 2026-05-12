@@ -110,6 +110,10 @@ interface ChessMoveStore {
   knightPreviewSquares: string[]
   setKnightPreviewSquares: (squares: string[]) => void
 
+  // Pending puzzle — set when user picks an opening/sequence, consumed by GameScreen on mount
+  pendingPuzzle: import('../lib/puzzles').Puzzle | null
+  setPendingPuzzle: (p: import('../lib/puzzles').Puzzle | null) => void
+
   // Gesture recognition log — chat-style debug feed
   gestureLog: Array<{ id: number; time: string; text: string }>
   addGestureLog: (text: string) => void
@@ -199,6 +203,9 @@ export const useGameStore = create<ChessMoveStore>((set) => ({
 
   knightPreviewSquares: [],
   setKnightPreviewSquares: (knightPreviewSquares) => set({ knightPreviewSquares }),
+
+  pendingPuzzle: null,
+  setPendingPuzzle: (pendingPuzzle) => set({ pendingPuzzle }),
 
   gestureLog: [],
   addGestureLog: (text) => set((s) => {

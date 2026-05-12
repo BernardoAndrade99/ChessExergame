@@ -22,7 +22,7 @@ import type { Puzzle } from './lib/puzzles'
 
 // ─── Sequences Screen ────────────────────────────────────────────────────────
 const SequencesScreen: React.FC = () => {
-  const { setGameMode, setAppScreen, isCalibrated } = useGameStore()
+  const { setGameMode, setAppScreen, isCalibrated, setPendingPuzzle } = useGameStore()
   const [filter, setFilter] = React.useState<'all' | Sequence['difficulty']>('all')
   const [favorites, setFavorites] = React.useState<Set<string>>(() => {
     try {
@@ -44,7 +44,18 @@ const SequencesScreen: React.FC = () => {
     })
   }
 
-  const handleSelect = () => {
+  const handleSelect = (seq: Sequence) => {
+    const puzzle: import('./lib/puzzles').Puzzle = {
+      id: seq.id,
+      title: seq.title,
+      description: `Practice the ${seq.title} opening — play all ${seq.moves.length} moves in order.`,
+      fen: seq.startFen,
+      solution: seq.moves,
+      theme: 'Opening',
+      difficulty: seq.difficulty === 'beginner' ? 'easy' : seq.difficulty === 'intermediate' ? 'medium' : 'hard',
+      sideToMove: 'w',
+    }
+    setPendingPuzzle(puzzle)
     setGameMode('puzzle')
     setAppScreen(isCalibrated ? 'game' : 'side-select')
   }
@@ -90,7 +101,7 @@ const SequencesScreen: React.FC = () => {
       <div className="seq-grid-wrap">
         <div className="seq-grid">
           {filtered.map(seq => (
-            <div key={seq.id} className="seq-card" onClick={handleSelect}>
+            <div key={seq.id} className="seq-card" onClick={() => handleSelect(seq)}>
               {/* Thumbnail */}
               <div className="seq-card-thumb">
                 <MiniBoard fen={seq.fen} />
@@ -106,7 +117,7 @@ const SequencesScreen: React.FC = () => {
               <div className="seq-card-body">
                 <div className="seq-card-title">{seq.title}</div>
                 <div className="seq-card-meta">
-                  <span>{seq.moveCount} moves</span>
+                  <span>{seq.moves.length} moves</span>
                   <span className="seq-dot">•</span>
                   <span style={{ color: SEQ_DIFF_COLOR[seq.difficulty] }}>
                     {DIFFICULTY_LABEL[seq.difficulty]}
@@ -277,7 +288,14 @@ const GameScreen: React.FC = () => {
   const sidePuzzles = getPuzzlesBySide(puzzleSide)
 
   // ── Puzzle state ──
-  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle>(() => KNIGHT_BISHOP_TEST_PUZZLE)
+  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle>(() => {
+    const { pendingPuzzle, setPendingPuzzle } = useGameStore.getState()
+    if (pendingPuzzle) {
+      setPendingPuzzle(null)
+      return pendingPuzzle
+    }
+    return KNIGHT_BISHOP_TEST_PUZZLE
+  })
   const [puzzleSolvedCount, setPuzzleSolvedCount] = useState(0)
   const [puzzleSolved, setPuzzleSolved] = useState(false)
   const [puzzleFailed, setPuzzleFailed] = useState(false)
