@@ -18,11 +18,12 @@ import { getPuzzlesBySide, DIFFICULTY_COLOR, KNIGHT_BISHOP_TEST_PUZZLE } from '.
 import { SEQUENCES, DIFFICULTY_LABEL, DIFFICULTY_COLOR as SEQ_DIFF_COLOR } from './lib/sequences'
 import type { Sequence } from './lib/sequences'
 import { MiniBoard } from './components/Board/MiniBoard'
+import { DancePreviewScreen } from './components/DancePreview/DancePreviewScreen'
 import type { Puzzle } from './lib/puzzles'
 
 // ─── Sequences Screen ────────────────────────────────────────────────────────
 const SequencesScreen: React.FC = () => {
-  const { setGameMode, setAppScreen, isCalibrated, setPendingPuzzle } = useGameStore()
+  const { setGameMode, setAppScreen, setPendingPuzzle } = useGameStore()
   const [filter, setFilter] = React.useState<'all' | Sequence['difficulty']>('all')
   const [favorites, setFavorites] = React.useState<Set<string>>(() => {
     try {
@@ -57,7 +58,7 @@ const SequencesScreen: React.FC = () => {
     }
     setPendingPuzzle(puzzle)
     setGameMode('puzzle')
-    setAppScreen(isCalibrated ? 'game' : 'side-select')
+    setAppScreen('dance-preview')
   }
 
   const FILTERS: Array<{ key: 'all' | Sequence['difficulty']; label: string }> = [
@@ -585,6 +586,7 @@ export default function App() {
   const [calLandmarks, setCalLandmarks] = useState<NormalizedLandmark[] | null>(null)
 
   if (appScreen === 'sequences') return <SequencesScreen />
+  if (appScreen === 'dance-preview') return <DancePreviewScreen />
   if (appScreen === 'side-select') return <SideSelectScreen />
   if (appScreen === 'calibration') {
     return (

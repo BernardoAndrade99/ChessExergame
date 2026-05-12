@@ -1,18 +1,19 @@
 import React from 'react'
 import { Chess } from 'chess.js'
 
-const PIECE_GLYPH: Record<string, string> = {
-  wk: '♔', wq: '♕', wr: '♖', wb: '♗', wn: '♘', wp: '♙',
-  bk: '♚', bq: '♛', br: '♜', bb: '♝', bn: '♞', bp: '♟',
-}
-
 interface MiniBoardProps {
   fen: string
-  /** Pass a pixel size, or omit to fill 100% of the parent */
+  /** Pass a pixel size to fix dimensions, or omit to fill 100% of the parent */
   size?: number
+  /** Optionally flip the board (black at bottom) */
+  flipped?: boolean
 }
 
-export const MiniBoard: React.FC<MiniBoardProps> = ({ fen, size }) => {
+/**
+ * Read-only board that renders SVG pieces from /ChessPiecesSvg/.
+ * Drop-in replacement for the old Unicode glyph version.
+ */
+export const MiniBoard: React.FC<MiniBoardProps> = ({ fen, size, flipped = false }) => {
   let board: ReturnType<InstanceType<typeof Chess>['board']>
   try {
     board = new Chess(fen).board()
@@ -20,10 +21,14 @@ export const MiniBoard: React.FC<MiniBoardProps> = ({ fen, size }) => {
     board = new Chess().board()
   }
 
-  const dim = size != null ? size : undefined
-  const style: React.CSSProperties = dim
-    ? { width: dim, height: dim }
+  const containerStyle: React.CSSProperties = size != null
+    ? { width: size, height: size }
     : { width: '100%', height: '100%' }
+
+  const rows = flipped ? [...board].reverse() : board
+  const cols = flipped
+    ? (row: typeof board[0]) => [...row].reverse()
+    : (row: typeof board[0]) => row
 
   return (
     <div
@@ -34,27 +39,39 @@ export const MiniBoard: React.FC<MiniBoardProps> = ({ fen, size }) => {
         borderRadius: 6,
         overflow: 'hidden',
         flexShrink: 0,
-        ...style,
+        userSelect: 'none',
+        ...containerStyle,
       }}
     >
-      {board.map((row, ri) =>
-        row.map((piece, ci) => {
+      {rows.map((row, ri) =>
+        cols(row).map((piece, ci) => {
           const isLight = (ri + ci) % 2 === 0
-          const key = piece ? `${piece.color}${piece.type}` : ''
+          const pieceKey = piece ? `${piece.color}${piece.type.toUpperCase()}` : null
           return (
             <div
               key={`${ri}-${ci}`}
               style={{
-                background: isLight ? '#c8a97e' : '#8b6343',
+                background: isLight ? 'var(--sq-light)' : 'var(--sq-dark)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 'clamp(8px, 1.5vw, 18px)',
-                lineHeight: 1,
-                userSelect: 'none',
+                position: 'relative',
               }}
             >
-              {piece ? PIECE_GLYPH[key] ?? '' : ''}
+              {pieceKey && (
+                <img
+                  src={`/ChessPiecesSvg/${pieceKey}.svg`}
+                  alt={pieceKey}
+                  draggable={false}
+                  style={{
+                    width: '82%',
+                    height: '82%',
+                    objectFit: 'contain',
+                    pointerEvents: 'none',
+                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))',
+                  }}
+                />
+              )}
             </div>
           )
         })

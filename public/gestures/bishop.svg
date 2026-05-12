@@ -1,0 +1,7 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
+  <rect width="320" height="320" rx="16" fill="#1a2235"/>
+  <rect x="1" y="1" width="318" height="318" rx="15" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="8 4" opacity="0.5"/>
+  <text x="160" y="140" text-anchor="middle" font-size="80" font-family="serif">♝</text>
+  <text x="160" y="200" text-anchor="middle" font-size="18" font-family="Inter,sans-serif" fill="#f59e0b" font-weight="600">Bishop Gesture</text>
+  <text x="160" y="228" text-anchor="middle" font-size="13" font-family="Inter,sans-serif" fill="#94a3b8">Replace with recorded GIF</text>
+</svg>

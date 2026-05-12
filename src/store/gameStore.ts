@@ -6,7 +6,7 @@ import type { ArmPieceType } from '../lib/trajectoryMatcher'
 
 export type GameMode = 'puzzle' | 'freegame'
 export type PlayerSide = 'white' | 'black'
-export type AppScreen = 'sequences' | 'side-select' | 'calibration' | 'game'
+export type AppScreen = 'sequences' | 'dance-preview' | 'side-select' | 'calibration' | 'game'
 
 export interface CursorState {
   x: number        // screen pixel x
