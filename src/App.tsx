@@ -15,29 +15,116 @@ import { StatusOverlay } from './components/HUD/StatusOverlay'
 import { ArmModePanel } from './components/HUD/ArmModePanel'
 import { CalibrationWizard } from './components/Calibration/CalibrationWizard'
 import { getPuzzlesBySide, DIFFICULTY_COLOR, KNIGHT_BISHOP_TEST_PUZZLE } from './lib/puzzles'
+import { SEQUENCES, DIFFICULTY_LABEL, DIFFICULTY_COLOR as SEQ_DIFF_COLOR } from './lib/sequences'
+import type { Sequence } from './lib/sequences'
+import { MiniBoard } from './components/Board/MiniBoard'
 import type { Puzzle } from './lib/puzzles'
 
-// ─── Mode Select Screen ───────────────────────────────────────────────────────
-const ModeSelectScreen: React.FC = () => {
-  const { setGameMode, setAppScreen } = useGameStore()
+// ─── Sequences Screen ────────────────────────────────────────────────────────
+const SequencesScreen: React.FC = () => {
+  const { setGameMode, setAppScreen, isCalibrated } = useGameStore()
+  const [filter, setFilter] = React.useState<'all' | Sequence['difficulty']>('all')
+  const [favorites, setFavorites] = React.useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('chessmove_favorites')
+      return saved ? new Set(JSON.parse(saved)) : new Set()
+    } catch { return new Set() }
+  })
+
+  const filtered = filter === 'all'
+    ? SEQUENCES
+    : SEQUENCES.filter(s => s.difficulty === filter)
+
+  const toggleFavorite = (id: string) => {
+    setFavorites(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      localStorage.setItem('chessmove_favorites', JSON.stringify([...next]))
+      return next
+    })
+  }
+
+  const handleSelect = () => {
+    setGameMode('puzzle')
+    setAppScreen(isCalibrated ? 'game' : 'side-select')
+  }
+
+  const FILTERS: Array<{ key: 'all' | Sequence['difficulty']; label: string }> = [
+    { key: 'all', label: 'All' },
+    { key: 'beginner', label: 'Beginner' },
+    { key: 'intermediate', label: 'Intermediate' },
+    { key: 'advanced', label: 'Advanced' },
+  ]
+
   return (
-    <div className="fullscreen-screen">
-      <div className="screen-content animate-slide-up">
-        <div style={{ fontSize: '3rem', marginBottom: 12 }}>♟️</div>
-        <h1 className="screen-title">ChessMove</h1>
-        <p className="screen-sub">Embodied chess training — play with your hands</p>
-        <div className="option-grid">
-          <div className="option-card" onClick={() => { setGameMode('freegame'); setAppScreen('side-select') }}>
-            <span className="option-icon">⚔️</span>
-            <span className="option-label">Free Game</span>
-            <span className="option-desc">Play against Stockfish</span>
-          </div>
-          <div className="option-card" onClick={() => { setGameMode('puzzle'); setAppScreen('side-select') }}>
-            <span className="option-icon">🧩</span>
-            <span className="option-label">Puzzle Mode</span>
-            <span className="option-desc">Solve tactical positions</span>
-          </div>
+    <div className="seq-page">
+      {/* Header */}
+      <div className="seq-topbar">
+        <div className="seq-pawn">♟</div>
+      </div>
+
+      {/* Hero */}
+      <div className="seq-hero">
+        <h1 className="seq-title">
+          Choose Your <span className="seq-title-accent">Sequence</span>
+        </h1>
+        <p className="seq-subtitle">Learn openings through movement. Memorize. Move. Master.</p>
+      </div>
+
+      {/* Filters */}
+      <div className="seq-filter-row">
+        <div className="seq-tabs">
+          {FILTERS.map(f => (
+            <button
+              key={f.key}
+              className={`seq-tab${filter === f.key ? ' active' : ''}`}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
+      </div>
+
+      {/* Grid */}
+      <div className="seq-grid-wrap">
+        <div className="seq-grid">
+          {filtered.map(seq => (
+            <div key={seq.id} className="seq-card" onClick={handleSelect}>
+              {/* Thumbnail */}
+              <div className="seq-card-thumb">
+                <MiniBoard fen={seq.fen} />
+                <button
+                  className="seq-star"
+                  onClick={e => { e.stopPropagation(); toggleFavorite(seq.id) }}
+                  aria-label="Favourite"
+                >
+                  {favorites.has(seq.id) ? '★' : '☆'}
+                </button>
+              </div>
+              {/* Info */}
+              <div className="seq-card-body">
+                <div className="seq-card-title">{seq.title}</div>
+                <div className="seq-card-meta">
+                  <span>{seq.moveCount} moves</span>
+                  <span className="seq-dot">•</span>
+                  <span style={{ color: SEQ_DIFF_COLOR[seq.difficulty] }}>
+                    {DIFFICULTY_LABEL[seq.difficulty]}
+                  </span>
+                </div>
+                <div className="seq-card-dance">
+                  <span className="seq-dance-icon">🕺</span>
+                  Dance: {seq.danceDuration}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom hint */}
+      <div className="seq-bottom-bar">
+        <span>★ Favorite sequences to track your progress</span>
       </div>
     </div>
   )
@@ -69,7 +156,7 @@ const SideSelectScreen: React.FC = () => {
             <span className="option-desc">Respond to opponent</span>
           </div>
         </div>
-        <button className="btn btn-ghost" onClick={() => setAppScreen('mode-select')}>← Back</button>
+        <button className="btn btn-ghost" onClick={() => setAppScreen('sequences')}>← Back</button>
       </div>
     </div>
   )
@@ -359,7 +446,7 @@ const GameScreen: React.FC = () => {
             ↺ {gameMode === 'puzzle' ? 'Retry' : 'New Game'}
           </button>
           <button className="btn btn-ghost" style={{ fontSize: '0.78rem', padding: '6px 12px' }}
-            onClick={() => setAppScreen('mode-select')}>
+            onClick={() => setAppScreen('sequences')}>
             ← Menu
           </button>
         </div>
@@ -479,7 +566,7 @@ export default function App() {
   const { appScreen, setAppScreen } = useGameStore()
   const [calLandmarks, setCalLandmarks] = useState<NormalizedLandmark[] | null>(null)
 
-  if (appScreen === 'mode-select') return <ModeSelectScreen />
+  if (appScreen === 'sequences') return <SequencesScreen />
   if (appScreen === 'side-select') return <SideSelectScreen />
   if (appScreen === 'calibration') {
     return (

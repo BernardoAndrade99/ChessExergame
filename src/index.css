@@ -659,3 +659,224 @@ html, body, #root {
   30%      { background: rgba(239,68,68,0.55); }
 }
 .flash-red { animation: flash-red 0.5s ease; }
+
+/* ─── Sequences Homepage ─────────────────────────────────────────── */
+.seq-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background:
+    radial-gradient(ellipse 70% 40% at 50% 0%, rgba(139,92,246,0.07) 0%, transparent 65%),
+    var(--bg-base);
+  padding-bottom: 72px; /* room for the bottom bar */
+}
+
+.seq-topbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 32px 0;
+  flex-shrink: 0;
+}
+
+.seq-pawn {
+  font-size: 2rem;
+  opacity: 0.55;
+}
+
+.seq-hero {
+  text-align: center;
+  padding: 12px 24px 0;
+  flex-shrink: 0;
+}
+
+.seq-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  line-height: 1.15;
+}
+
+.seq-title-accent {
+  background: linear-gradient(135deg, var(--accent-violet), #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.seq-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 0;
+}
+
+.seq-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 32px 0;
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 900px;
+}
+
+.seq-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9999px;
+  padding: 4px;
+}
+
+.seq-tab {
+  padding: 6px 20px;
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.seq-tab:hover { color: var(--text-primary); }
+.seq-tab.active {
+  background: linear-gradient(135deg, #7c3aed, var(--accent-violet));
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(139,92,246,0.4);
+}
+
+.seq-grid-wrap {
+  width: 100%;
+  max-width: 900px;
+  padding: 24px 32px 0;
+  flex-shrink: 0;
+}
+
+.seq-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 860px) {
+  .seq-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.seq-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.seq-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(139,92,246,0.4);
+  box-shadow: 0 8px 28px rgba(139,92,246,0.15);
+}
+
+.seq-card-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.seq-card-thumb > div { /* MiniBoard wrapper */
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.seq-star {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.55);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  color: var(--accent-gold);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: transform 0.12s ease;
+  z-index: 2;
+}
+.seq-star:hover { transform: scale(1.2); }
+
+.seq-card-body {
+  padding: 10px 12px 12px;
+}
+
+.seq-card-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seq-card-meta {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.seq-dot {
+  color: var(--text-muted);
+}
+
+.seq-card-dance {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.seq-dance-icon {
+  font-size: 0.82rem;
+}
+
+.seq-bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 14px 24px;
+  background: rgba(13,18,37,0.9);
+  border-top: 1px solid var(--border-subtle);
+  backdrop-filter: blur(12px);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  z-index: 10;
+}
+

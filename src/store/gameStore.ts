@@ -6,7 +6,7 @@ import type { ArmPieceType } from '../lib/trajectoryMatcher'
 
 export type GameMode = 'puzzle' | 'freegame'
 export type PlayerSide = 'white' | 'black'
-export type AppScreen = 'mode-select' | 'side-select' | 'calibration' | 'game'
+export type AppScreen = 'sequences' | 'side-select' | 'calibration' | 'game'
 
 export interface CursorState {
   x: number        // screen pixel x
@@ -137,7 +137,7 @@ const initialGame: GameState = {
 
 export const useGameStore = create<ChessMoveStore>((set) => ({
   // Navigation
-  appScreen: 'mode-select',
+  appScreen: 'sequences',
   gameMode: 'freegame',
   playerSide: 'white',
   setAppScreen: (appScreen) => set({ appScreen }),
