@@ -23,12 +23,6 @@ const HIP_LIFTOFF_VEL        = 0.14  // shoulder-midpoint Y velocity (normalized
 const HIP_LAND_VEL           = 0.08  // shoulder-midpoint Y velocity (normalized/SECOND) below which = landed
 const JUMP_LATCH_MS          = 800   // ms to hold a detected jump direction for the debounce window
 const MIN_AIRBORNE_MS        = 150   // minimum ms in airborne phase to avoid single-frame noise
-const STEP_DEAD_ZONE         = 0.045 // normalized torso displacement before step intent appears
-const STEP_AXIS_THR          = 0.03  // per-axis threshold for king 8-direction stepping
-const PAWN_STEP_TWO_THR      = 0.19  // forward torso displacement threshold for 2-square pawn push
-const PAWN_SWIPE_THR         = 0.035 // horizontal wrist delta/frame to trigger pawn capture swipe
-const PAWN_SWIPE_COOLDOWN_MS = 500
-const KNIGHT_STEP_JUMP_THR   = 0.11  // torso forward/back displacement to synthesize jump gesture
 
 type KnightDir = 'jump_fwd' | 'jump_back' | 'turn_left' | 'turn_right'
 type SweepPiece = 'b' | 'r' | 'q' | 'k' | 'p' | 'n'
@@ -87,117 +81,6 @@ function chooseCastleTarget(
   return sorted[0]
 }
 
-function normalizeLocal(
-  dx: number,
-  dy: number,
-  playerSide: 'white' | 'black',
-): { x: number; y: number } {
-  return playerSide === 'black' ? { x: -dx, y: -dy } : { x: dx, y: dy }
-}
-
-function findKingStepTarget(
-  selectedSquare: string,
-  legalTargets: string[],
-  localDx: number,
-  localDy: number,
-  playerSide: 'white' | 'black',
-): string | null {
-  const fromCol = 'abcdefgh'.indexOf(selectedSquare[0])
-  const fromRank = Number.parseInt(selectedSquare[1], 10)
-  if (fromCol < 0 || Number.isNaN(fromRank)) return null
-
-  const forward = -localDy
-  const hasIntent = Math.max(Math.abs(localDx), Math.abs(forward)) >= STEP_AXIS_THR
-  if (!hasIntent) return null
-
-  let dirX = localDx > STEP_AXIS_THR ? 1 : localDx < -STEP_AXIS_THR ? -1 : 0
-  let dirY = forward > STEP_AXIS_THR ? 1 : forward < -STEP_AXIS_THR ? -1 : 0
-  // Reduce accidental diagonals from small torso drift: prefer dominant axis.
-  if (Math.abs(localDx) > Math.abs(forward) * 1.6) dirY = 0
-  else if (Math.abs(forward) > Math.abs(localDx) * 1.6) dirX = 0
-  if (dirX === 0 && dirY === 0) return null
-
-  let boardDx = dirX
-  let boardDy = dirY
-  if (playerSide === 'black') { boardDx = -boardDx; boardDy = -boardDy }
-  const targetCol = fromCol + boardDx
-  const targetRank = fromRank + boardDy
-  if (targetCol >= 0 && targetCol <= 7 && targetRank >= 1 && targetRank <= 8) {
-    const targetSq = `${'abcdefgh'[targetCol]}${targetRank}`
-    if (legalTargets.includes(targetSq)) return targetSq
-  }
-
-  // Fallback: if strict direction had no legal target, choose closest legal king step.
-  const mag = Math.sqrt(localDx * localDx + forward * forward)
-  if (mag < STEP_DEAD_ZONE) return null
-  const ux = localDx / mag
-  const uy = forward / mag
-  let best: string | null = null
-  let bestScore = -Infinity
-  for (const sq of legalTargets) {
-    const toCol = 'abcdefgh'.indexOf(sq[0])
-    const toRank = Number.parseInt(sq[1], 10)
-    if (toCol < 0 || Number.isNaN(toRank)) continue
-    const dCol = toCol - fromCol
-    const dRank = toRank - fromRank
-    if (Math.max(Math.abs(dCol), Math.abs(dRank)) !== 1) continue
-    let lx = dCol
-    let ly = dRank
-    if (playerSide === 'black') { lx = -lx; ly = -ly }
-    const stepMag = Math.sqrt(lx * lx + ly * ly)
-    const dot = ux * (lx / stepMag) + uy * (ly / stepMag)
-    if (dot > bestScore) { bestScore = dot; best = sq }
-  }
-  return bestScore > 0.2 ? best : null
-}
-
-function findPawnStepPushTarget(
-  selectedSquare: string,
-  legalTargets: string[],
-  localDy: number,
-  playerSide: 'white' | 'black',
-): string | null {
-  const forward = -localDy
-  if (forward < STEP_DEAD_ZONE) return null
-  const desiredSteps = forward > PAWN_STEP_TWO_THR ? 2 : 1
-  const fromCol = 'abcdefgh'.indexOf(selectedSquare[0])
-  const fromRank = Number.parseInt(selectedSquare[1], 10)
-  if (fromCol < 0 || Number.isNaN(fromRank)) return null
-
-  let oneStep: string | null = null
-  let twoStep: string | null = null
-  for (const sq of legalTargets) {
-    const toCol = 'abcdefgh'.indexOf(sq[0])
-    const toRank = Number.parseInt(sq[1], 10)
-    if (toCol !== fromCol || Number.isNaN(toRank)) continue
-    let dRank = toRank - fromRank
-    if (playerSide === 'black') dRank = -dRank
-    if (dRank === 1) oneStep = sq
-    if (dRank === 2) twoStep = sq
-  }
-  if (desiredSteps === 2 && twoStep) return twoStep
-  return oneStep ?? twoStep
-}
-
-function findPawnSwipeCaptureTarget(
-  selectedSquare: string,
-  legalTargets: string[],
-  side: 'left' | 'right',
-  playerSide: 'white' | 'black',
-): string | null {
-  const fromCol = 'abcdefgh'.indexOf(selectedSquare[0])
-  const fromRank = Number.parseInt(selectedSquare[1], 10)
-  if (fromCol < 0 || Number.isNaN(fromRank)) return null
-
-  let dColLocal = side === 'left' ? -1 : 1
-  let dRankLocal = 1
-  if (playerSide === 'black') { dColLocal = -dColLocal; dRankLocal = -dRankLocal }
-  const targetCol = fromCol + dColLocal
-  const targetRank = fromRank + dRankLocal
-  if (targetCol < 0 || targetCol > 7 || targetRank < 1 || targetRank > 8) return null
-  const target = `${'abcdefgh'[targetCol]}${targetRank}`
-  return legalTargets.includes(target) ? target : null
-}
 
 /** Find the best destination for sweep-controlled pieces (including knight in non-step mode). */
 function findSweepTarget(
@@ -332,7 +215,7 @@ export function useGesture(
   landmarks: NormalizedLandmark[] | null,
   poseLandmarksRef: { current: ArmLandmarks | null },
   containerRef: React.RefObject<HTMLElement>,
-  userLeftHandRef:  { current: NormalizedLandmark[] | null } = { current: null },
+  _userLeftHandRef:  { current: NormalizedLandmark[] | null } = { current: null },
   userRightHandRef: { current: NormalizedLandmark[] | null } = { current: null }
 ) {
   const {
@@ -342,8 +225,6 @@ export function useGesture(
     gestureState,
     playerSide,
     armModeEnabled,
-    oneHandMode,
-    kingPawnStepMode,
   } = useGameStore()
   const kalman = useRef(new KalmanFilter2D(0.005, 0.30))
   const pinchSince   = useRef<number | null>(null)
@@ -391,11 +272,15 @@ export function useGesture(
   const rightWristPrevRef      = useRef<{ x: number; y: number } | null>(null)
   const leftSwipeCooldownUntilRef  = useRef(0)
   const rightSwipeCooldownUntilRef = useRef(0)
-  const postDropCooldownUntil  = useRef(0)                      // timestamp: block gesture detection after a drop
-  const lastRightSquareRef     = useRef<string | null>(null)    // hysteresis for right-hand pointing
-  const sweepCandidateRef      = useRef<string | null>(null)    // current raw sweep candidate
-  const sweepCandidateSinceRef = useRef<number>(0)              // when the current candidate was first seen
-  const sweepCommittedRef      = useRef<string | null>(null)    // debounced stable sweep target
+  const postDropCooldownUntil     = useRef(0)                      // timestamp: block gesture detection after a drop
+  const postSelectCooldownUntil   = useRef(0)                      // timestamp: block sweep/drop for 1.5s after piece selection
+  const lastRightSquareRef        = useRef<string | null>(null)    // hysteresis for right-hand pointing
+  const sweepCandidateRef         = useRef<string | null>(null)    // current raw sweep candidate
+  const sweepCandidateSinceRef    = useRef<number>(0)              // when the current candidate was first seen
+  const sweepCommittedRef         = useRef<string | null>(null)    // debounced stable sweep target
+  const sweepThroughCooldownUntil = useRef(0)                      // timestamp: prevent double-fire of sweep-through
+  const pawnCountCandidateRef     = useRef<{ count: number; since: number } | null>(null)  // stability buffer for pawn finger count
+  const pointStableRef             = useRef<{ sq: string | null; since: number }>({ sq: null, since: 0 })  // right-hand pointing stability
 
   // ── Read arm destination without adding it to the dep array ────────────
   // Critical: if we read armDestinationSquare from the hook's reactive
@@ -565,13 +450,10 @@ export function useGesture(
     if (armModeEnabled) {
       // Clear squareName so stale cursor position never triggers isDropTarget/isHovered
       setCursor({ visible: false, squareName: null })
-      const leftFistNow = !!(userLeftHandRef.current && classifyGesture(userLeftHandRef.current).isFist)
-      const leftFistClosedEdge = leftFistNow && !leftFistPrevRef.current
-      leftFistPrevRef.current = leftFistNow
       const rightFistNow = !!(userRightHandRef.current && classifyGesture(userRightHandRef.current).isFist)
       const rightFistClosedEdge = rightFistNow && !rightFistPrevRef.current
       rightFistPrevRef.current = rightFistNow
-      const confirmFistClosedEdge = oneHandMode ? rightFistClosedEdge : leftFistClosedEdge
+      const confirmFistClosedEdge = rightFistClosedEdge
       const castleXPoseNow = !!(poseLandmarksRef.current && isCastleXPose(poseLandmarksRef.current))
       const castleXPoseEdge = castleXPoseNow && !castleXPosePrevRef.current
       castleXPosePrevRef.current = castleXPoseNow
@@ -630,6 +512,37 @@ export function useGesture(
           setGestureState('idle')
           return
         }
+
+        // ── Sweep-through auto-drop ──────────────────────────────────────────
+        // When the arm sweep preview (sweepCommittedRef) stabilises on a square,
+        // fire the drop automatically. The App's onDropSquare validates legality.
+        // Gated by postSelectCooldownUntil to prevent the piece from jumping
+        // immediately after being grabbed.
+        {
+          const nowSt = performance.now()
+          const sweepCheckSquare = sweepCommittedRef.current ?? rightSquareName ?? squareName
+          if (
+            grabbedSquareRef.current
+            && sweepCheckSquare
+            && sweepCheckSquare !== grabbedSquareRef.current
+            && nowSt > sweepThroughCooldownUntil.current
+            && nowSt > postSelectCooldownUntil.current
+            && onDropSquare.current
+          ) {
+            useGameStore.getState().addGestureLog(`Sweep-through: ${grabbedSquareRef.current} → ${sweepCheckSquare}`)
+            onDropSquare.current(grabbedSquareRef.current, sweepCheckSquare)
+            useGameStore.getState().setSweepPreviewSquare(null)
+            sweepThroughCooldownUntil.current = nowSt + POST_DROP_COOLDOWN_MS
+            postDropCooldownUntil.current = nowSt + POST_DROP_COOLDOWN_MS
+            sweepCandidateRef.current = null
+            sweepCandidateSinceRef.current = 0
+            sweepCommittedRef.current = null
+            grabbedSquareRef.current = null
+            setGestureState('idle')
+            return
+          }
+        }
+
 
         // ── Sweep-controlled pieces + knight jump/turn detection ─────────
         // ── Jump phase machine — runs every frame using cached shoulder values ──
@@ -772,123 +685,13 @@ export function useGesture(
           const chess = new Chess(fen)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const piece = chess.get(selectedSquare as any)
-          if (piece && (piece.type === 'k' || piece.type === 'p') && kingPawnStepMode && !oneHandMode) {
-            knightStepAnchorRef.current = null
-            knightStepStateRef.current = 0
-            const shoulderMidX = (arms.leftShoulder.x + arms.rightShoulder.x) / 2
-            const shoulderMidY = (arms.leftShoulder.y + arms.rightShoulder.y) / 2
-            const shoulderSpan = Math.max(0.08, Math.abs(arms.leftShoulder.x - arms.rightShoulder.x))
-            const currentPiece = piece.type as 'k' | 'p'
-            if (
-              !stepAnchorRef.current
-              || stepAnchorRef.current.square !== selectedSquare
-              || stepAnchorRef.current.piece !== currentPiece
-            ) {
-              stepAnchorRef.current = {
-                x: shoulderMidX,
-                y: shoulderMidY,
-                span: shoulderSpan,
-                square: selectedSquare,
-                piece: currentPiece,
-              }
-              leftWristPrevRef.current = null
-              rightWristPrevRef.current = null
-              leftSwipeCooldownUntilRef.current = 0
-              rightSwipeCooldownUntilRef.current = 0
-            }
-
-            const anchor = stepAnchorRef.current
-            const rawDx = (shoulderMidX - anchor.x) / anchor.span
-            const rawDy = (shoulderMidY - anchor.y) / anchor.span
-            const local = normalizeLocal(rawDx, rawDy, playerSide)
-
-            const pushTarget = piece.type === 'k'
-              ? findKingStepTarget(selectedSquare, legalTargets, local.x, local.y, playerSide)
-              : findPawnStepPushTarget(selectedSquare, legalTargets, local.y, playerSide)
-            const castleTargets = piece.type === 'k' ? getCastleTargets(selectedSquare, legalTargets) : []
-            const castleTarget = piece.type === 'k'
-              ? chooseCastleTarget(selectedSquare, castleTargets, pushTarget)
-              : null
-            const dropTarget = piece.type === 'k' && castleXPoseNow && castleTarget ? castleTarget : pushTarget
-            useGameStore.getState().setSweepPreviewSquare(dropTarget)
-
-            if (
-              piece.type === 'k'
-              && castleXPoseEdge
-              && castleTarget
-              && onDropSquare.current
-              && grabbedSquareRef.current
-            ) {
-              useGameStore.getState().addGestureLog(`Castle X: ${grabbedSquareRef.current} → ${castleTarget}`)
-              onDropSquare.current(grabbedSquareRef.current, castleTarget)
-              useGameStore.getState().setSweepPreviewSquare(null)
-              grabbedSquareRef.current = null
-              setGestureState('idle')
-              return
-            }
-
-            if (piece.type === 'p') {
-              const nowMs = performance.now()
-              const lp = leftWristPrevRef.current
-              const rp = rightWristPrevRef.current
-              if (lp && rp && onDropSquare.current && grabbedSquareRef.current) {
-                const leftDelta = normalizeLocal(arms.leftWrist.x - lp.x, arms.leftWrist.y - lp.y, playerSide)
-                const rightDelta = normalizeLocal(arms.rightWrist.x - rp.x, arms.rightWrist.y - rp.y, playerSide)
-                const leftSwipeEdge = nowMs > leftSwipeCooldownUntilRef.current
-                  && Math.abs(leftDelta.x) > PAWN_SWIPE_THR
-                  && Math.abs(leftDelta.x) > Math.abs(leftDelta.y) * 1.2
-                const rightSwipeEdge = nowMs > rightSwipeCooldownUntilRef.current
-                  && Math.abs(rightDelta.x) > PAWN_SWIPE_THR
-                  && Math.abs(rightDelta.x) > Math.abs(rightDelta.y) * 1.2
-                if (leftSwipeEdge) {
-                  leftSwipeCooldownUntilRef.current = nowMs + PAWN_SWIPE_COOLDOWN_MS
-                  // Mirror-intuitive mapping: left-arm swipe attacks right diagonal.
-                  const capture = findPawnSwipeCaptureTarget(selectedSquare, legalTargets, 'right', playerSide)
-                  if (capture) {
-                    useGameStore.getState().addGestureLog(`Pawn left swipe: ${grabbedSquareRef.current} → ${capture}`)
-                    onDropSquare.current(grabbedSquareRef.current, capture)
-                    useGameStore.getState().setSweepPreviewSquare(null)
-                    grabbedSquareRef.current = null
-                    setGestureState('idle')
-                    return
-                  }
-                }
-                if (rightSwipeEdge) {
-                  rightSwipeCooldownUntilRef.current = nowMs + PAWN_SWIPE_COOLDOWN_MS
-                  // Mirror-intuitive mapping: right-arm swipe attacks left diagonal.
-                  const capture = findPawnSwipeCaptureTarget(selectedSquare, legalTargets, 'left', playerSide)
-                  if (capture) {
-                    useGameStore.getState().addGestureLog(`Pawn right swipe: ${grabbedSquareRef.current} → ${capture}`)
-                    onDropSquare.current(grabbedSquareRef.current, capture)
-                    useGameStore.getState().setSweepPreviewSquare(null)
-                    grabbedSquareRef.current = null
-                    setGestureState('idle')
-                    return
-                  }
-                }
-              }
-              leftWristPrevRef.current = { x: arms.leftWrist.x, y: arms.leftWrist.y }
-              rightWristPrevRef.current = { x: arms.rightWrist.x, y: arms.rightWrist.y }
-            } else {
-              leftWristPrevRef.current = null
-              rightWristPrevRef.current = null
-            }
-
-            if (confirmFistClosedEdge && dropTarget && onDropSquare.current && grabbedSquareRef.current) {
-              useGameStore.getState().addGestureLog(`Drop trigger: ${grabbedSquareRef.current} → ${dropTarget}`)
-              onDropSquare.current(grabbedSquareRef.current, dropTarget)
-              useGameStore.getState().setSweepPreviewSquare(null)
-              grabbedSquareRef.current = null
-              setGestureState('idle')
-              return
-            }
-          } else if (piece && (
+          if (piece && (
             piece.type === 'b'
             || piece.type === 'r'
             || piece.type === 'q'
             || piece.type === 'k'
             || piece.type === 'p'
-            || (piece.type === 'n' && (!kingPawnStepMode || oneHandMode))
+            || piece.type === 'n'
           )) {
             knightStepAnchorRef.current = null
             knightStepStateRef.current = 0
@@ -943,8 +746,16 @@ export function useGesture(
               return
             }
 
-            // Universal arm-mode drop trigger: close confirm hand (left by default, right in one-hand mode).
-            if (confirmFistClosedEdge && dropTarget && onDropSquare.current && grabbedSquareRef.current) {
+            // Universal arm-mode drop trigger: close confirm hand (right in one-hand mode).
+            // Gated by postSelectCooldownUntil to prevent the same fist-close that grabbed
+            // the piece from immediately dropping it on the current sweep target.
+            if (
+              confirmFistClosedEdge
+              && dropTarget
+              && onDropSquare.current
+              && grabbedSquareRef.current
+              && performance.now() > postSelectCooldownUntil.current
+            ) {
               useGameStore.getState().addGestureLog(`Drop trigger: ${grabbedSquareRef.current} → ${dropTarget}`)
               onDropSquare.current(grabbedSquareRef.current, dropTarget)
               useGameStore.getState().setSweepPreviewSquare(null)
@@ -975,43 +786,7 @@ export function useGesture(
           const chess = new Chess(fen)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const piece = chess.get(selectedSquare as any)
-          if (piece?.type === 'n' && kingPawnStepMode && !oneHandMode) {
-            useGameStore.getState().setSweepPreviewSquare(null)
-
-            // Knight jump fallback: torso forward/back displacement synthesizes jump_fwd/back.
-            if (arms) {
-              const shoulderMidX = (arms.leftShoulder.x + arms.rightShoulder.x) / 2
-              const shoulderMidY = (arms.leftShoulder.y + arms.rightShoulder.y) / 2
-              const shoulderSpan = Math.max(0.08, Math.abs(arms.leftShoulder.x - arms.rightShoulder.x))
-              if (!knightStepAnchorRef.current || knightStepAnchorRef.current.square !== selectedSquare) {
-                knightStepAnchorRef.current = {
-                  x: shoulderMidX,
-                  y: shoulderMidY,
-                  span: shoulderSpan,
-                  square: selectedSquare,
-                }
-                knightStepStateRef.current = 0
-              }
-              const kAnchor = knightStepAnchorRef.current
-              const rawDx = (shoulderMidX - kAnchor.x) / kAnchor.span
-              const rawDy = (shoulderMidY - kAnchor.y) / kAnchor.span
-              const local = normalizeLocal(rawDx, rawDy, playerSide)
-              const forward = -local.y
-              const stepState: -1 | 0 | 1 =
-                forward > KNIGHT_STEP_JUMP_THR ? 1 : forward < -KNIGHT_STEP_JUMP_THR ? -1 : 0
-              if (
-                stepState !== 0
-                && knightStepStateRef.current === 0
-              ) {
-                const dir: KnightDir = stepState > 0 ? 'jump_fwd' : 'jump_back'
-                jumpDirLatchRef.current = { dir, until: performance.now() + JUMP_LATCH_MS }
-                useGameStore.getState().addGestureLog(`Knight step jump: ${dir}`)
-              }
-              knightStepStateRef.current = stepState
-            } else {
-              knightStepStateRef.current = 0
-            }
-
+          if (piece?.type === 'n') {
             // Knight sequence stays active indefinitely until completed, cancelled, or piece deselected
 
             // ── Determine which gesture (if any) is ready this frame ──────────
@@ -1038,16 +813,12 @@ export function useGesture(
                 const previews = sel ? knightLegalForFirstGesture(sel, legal, readyDir, playerSide) : []
 
                 // ── Auto-infer jump direction when turn fires first with no previews ──
-                // e.g. knight on back rank: all legal moves are "jump_fwd + turn".
-                // If the user shows a turn gesture but there are no "2-squares-sideways" legal
-                // moves, we check which jump direction (fwd/back) pairs with this turn to give
-                // a legal target.  If exactly one does, fire immediately — no body jump needed.
                 if (previews.length === 0 && sel && (readyDir === 'turn_left' || readyDir === 'turn_right')) {
                   const fwdTarget  = findKnightTarget(sel, legal, 'jump_fwd',  readyDir, playerSide)
                   const backTarget = findKnightTarget(sel, legal, 'jump_back', readyDir, playerSide)
                   const autoTarget = (fwdTarget && !backTarget)  ? fwdTarget
                                    : (!fwdTarget && backTarget)  ? backTarget
-                                   : null  // both or neither → can't auto-infer
+                                   : null
                   if (autoTarget) {
                     const inferredJump = fwdTarget ? 'jump_fwd' : 'jump_back'
                     useGameStore.getState().addGestureLog(
@@ -1135,14 +906,14 @@ export function useGesture(
       const rightGestureType = userRightHandRef.current
         ? detectHandGesture(classifyGesture(userRightHandRef.current))
         : null
-      const lockedOneHandType = (oneHandMode && userRightHandRef.current)
+      const lockedOneHandType = userRightHandRef.current
         ? oneHandPickRef.current?.pieceType ?? null
         : null
-      // While user is counting fingers to pick a pawn, lock detection to 'p' so that
-      // showing 2 fingers (bishop pattern), 4 fingers, etc. doesn't reset piece selection.
+      // While a multi-piece pick is active, lock detection to that type so that
+      // changing fingers (e.g. showing 2 for bishop) doesn't reset piece selection.
       const rawDetected = (inCooldown || !handAboveHip || performance.now() < postDropCooldownUntil.current)
         ? null
-        : oneHandMode ? (lockedOneHandType ?? rightGestureType) : detectHandGesture(gesture)
+        : lockedOneHandType ?? rightGestureType
       const detectedType = pawnLockRef.current ? 'p' : rawDetected
 
       if (detectedType) {
@@ -1188,6 +959,10 @@ export function useGesture(
             if (selected) {
               useGameStore.getState().addGestureLog(`Gesture: ${cur.pieceType.toUpperCase()} → select ${targetSq} (auto)`)
               grabbedSquareRef.current = targetSq
+              postSelectCooldownUntil.current = performance.now() + 600  // 600ms before sweep can drop
+              sweepCandidateRef.current = null
+              sweepCandidateSinceRef.current = 0
+              sweepCommittedRef.current = null
               setGestureState('grabbing')
             }
           }
@@ -1198,175 +973,101 @@ export function useGesture(
           // Multiple pieces — highlight all of them
           useGameStore.getState().setHandGesturePieceType(cur.pieceType)
 
-          // One-hand mode: keep pieces highlighted, point with right hand, close right fist to confirm.
-          if (oneHandMode) {
-            pawnLockRef.current = false
-            pawnColumnRef.current = null
-            oneHandPickRef.current = { pieceType: cur.pieceType, candidates: matchingSquares }
+          // ── Right-hand-only multi-piece selection ─────────────────────────────
+          // Point right index at desired piece → hold for stability period.
+          // Non-pawns: auto-select after 500ms (no fist needed — simpler and avoids
+          //   the rook-gesture-is-fist conflict).
+          // Pawns: 8 densely packed pieces need 800ms stability + fist-close to
+          //   prevent accidental wrong-pawn selection.
+          const IS_PAWN = cur.pieceType === 'p'
+          const POINT_STABLE_MS = IS_PAWN ? 800 : 500
 
-            const sqToCoord = (sq: string) => ({
-              col: 'abcdefgh'.indexOf(sq[0]),
-              row: Number.parseInt(sq[1], 10),
-            })
+          pawnLockRef.current = false
+          pawnColumnRef.current = null
+          pawnCountCandidateRef.current = null
+          oneHandPickRef.current = { pieceType: cur.pieceType, candidates: matchingSquares }
 
-            let targetSq: string | null = null
-            if (rightSquareName) {
-              if (matchingSquares.includes(rightSquareName)) {
-                targetSq = rightSquareName
-              } else {
-                const p = sqToCoord(rightSquareName)
-                let bestDist = Infinity
-                for (const sq of matchingSquares) {
-                  const c = sqToCoord(sq)
-                  const d = Math.abs(c.col - p.col) + Math.abs(c.row - p.row)
-                  if (d < bestDist) {
-                    bestDist = d
-                    targetSq = sq
-                  }
-                }
+          const sqToCoord = (sq: string) => ({
+            col: 'abcdefgh'.indexOf(sq[0]),
+            row: Number.parseInt(sq[1], 10),
+          })
+
+          // Resolve which candidate the right index is closest to
+          let rawTarget: string | null = null
+          if (rightSquareName) {
+            if (matchingSquares.includes(rightSquareName)) {
+              rawTarget = rightSquareName
+            } else {
+              const p = sqToCoord(rightSquareName)
+              let bestDist = Infinity
+              for (const sq of matchingSquares) {
+                const c = sqToCoord(sq)
+                const d = Math.abs(c.col - p.col) + Math.abs(c.row - p.row)
+                if (d < bestDist) { bestDist = d; rawTarget = sq }
               }
             }
-            useGameStore.getState().setOneHandPreviewSquare(targetSq)
+          }
 
-            if (confirmFistClosedEdge && targetSq && onSelectSquare.current) {
-              const selected = onSelectSquare.current(targetSq)
+          // Stability gate: rawTarget must be unchanged for POINT_STABLE_MS
+          const nowPoint = performance.now()
+          if (rawTarget !== pointStableRef.current.sq) {
+            pointStableRef.current = { sq: rawTarget, since: nowPoint }
+          }
+          const pointHeldMs = nowPoint - pointStableRef.current.since
+          const stableTarget = (pointHeldMs >= POINT_STABLE_MS) ? rawTarget : null
+
+          // Preview: use a 250ms stability gate before changing the highlighted square.
+          // This stops the pawn preview from flickering on tiny hand tremors.
+          const PREVIEW_STABLE_MS = 250
+          const previewTarget = (pointHeldMs >= PREVIEW_STABLE_MS) ? rawTarget : pointStableRef.current.sq
+          useGameStore.getState().setOneHandPreviewSquare(previewTarget)
+
+          if (!IS_PAWN) {
+            // ── Non-pawn: auto-select once pointer is stable ──────────────────
+            if (stableTarget && onSelectSquare.current) {
+              const selected = onSelectSquare.current(stableTarget)
               if (selected) {
                 useGameStore.getState().addGestureLog(
-                  `${cur.pieceType.toUpperCase()}: right-hand point + fist → select ${targetSq}`
+                  `${cur.pieceType.toUpperCase()}: pointed ${pointHeldMs.toFixed(0)}ms → auto-select ${stableTarget}`
                 )
                 cur.fired = true
-                // Reset sweep debounce for the new destination-aiming phase
                 sweepCandidateRef.current = null
                 sweepCandidateSinceRef.current = 0
                 sweepCommittedRef.current = null
-                grabbedSquareRef.current = targetSq
+                grabbedSquareRef.current = stableTarget
+                postSelectCooldownUntil.current = performance.now() + 600  // 600ms: arm must deliberately move to new target
                 setGestureState('grabbing')
                 activeGesture.current = null
                 oneHandPickRef.current = null
+                pointStableRef.current = { sq: null, since: 0 }
                 useGameStore.getState().setHandGesturePieceType(null)
                 useGameStore.getState().setOneHandPreviewSquare(null)
               }
-            }
-          } else if (cur.pieceType === 'p') {
-            useGameStore.getState().setOneHandPreviewSquare(null)
-            // ── Pawn column selection: hold up N fingers to pick pawn in column N ──
-            // 1 finger (index only) → a-pawn, 2 → b-pawn, ... 8 → h-pawn
-            // Lock mode: prevent other piece gestures from interrupting the count
-            pawnLockRef.current = true
-            const leftLm  = userLeftHandRef.current
-            const rightLm = userRightHandRef.current
-
-            const countFrom = (lm: NormalizedLandmark[] | null): number => {
-              if (!lm) return 0
-              const g = classifyGesture(lm)
-              return [g.fingerStates.index, g.fingerStates.middle, g.fingerStates.ring, g.fingerStates.pinky].filter(Boolean).length
-            }
-
-            const leftCount  = countFrom(leftLm)
-            const rightCount = countFrom(rightLm)
-
-            // Left hand (1-4 fingers) → pawns a-d  |  Right hand (1-4 fingers) → pawns e-h
-            const pawnFingerCount = (rightCount >= 1 && rightCount <= 4)
-              ? rightCount + 4
-              : leftCount
-            if (pawnFingerCount >= 1 && pawnFingerCount <= 8) {
-              const colLetter = 'abcdefgh'[pawnFingerCount - 1]
-              const columnPawns = matchingSquares
-                .filter((sq) => sq[0] === colLetter)
-                .sort((a, b) => {
-                  const rankA = Number.parseInt(a[1], 10)
-                  const rankB = Number.parseInt(b[1], 10)
-                  // Near-to-far from player's perspective
-                  return playerSide === 'white' ? rankA - rankB : rankB - rankA
-                })
-              const cur2 = pawnColumnRef.current
-              if (!cur2 || cur2.count !== pawnFingerCount) {
-                pawnColumnRef.current = { count: pawnFingerCount, since: performance.now() }
-                if (columnPawns.length > 0) {
-                  useGameStore.getState().addGestureLog(`Pawn col ${pawnFingerCount} (${colLetter}) — hold 1.5s to confirm`)
-                }
-              } else if (performance.now() - cur2.since >= 1500) {
-                // Confirmed — select this pawn
-                cur.fired = true
-                pawnColumnRef.current = null
-                pawnLockRef.current = false
-                let targetSq: string | null = null
-                if (columnPawns.length > 0) {
-                  const movable = columnPawns.filter((sq) => {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    return chess.moves({ square: sq as any, verbose: true }).length > 0
-                  })
-                  const candidates = movable.length > 0 ? movable : columnPawns
-                  let pickIndex = 0
-                  const prevPick = pawnColumnChoiceRef.current
-                  if (prevPick && prevPick.file === colLetter && prevPick.total === candidates.length) {
-                    pickIndex = (prevPick.index + 1) % candidates.length
-                  }
-                  pawnColumnChoiceRef.current = { file: colLetter, index: pickIndex, total: candidates.length }
-                  targetSq = candidates[pickIndex]
-                  if (candidates.length > 1) {
-                    useGameStore.getState().addGestureLog(
-                      `Pawn file ${colLetter}: selected ${targetSq} (${pickIndex + 1}/${candidates.length}, repeat hold to cycle)`
-                    )
-                  }
-                }
-                if (targetSq && onSelectSquare.current) {
-                  const selected = onSelectSquare.current(targetSq)
-                  if (selected) {
-                    useGameStore.getState().addGestureLog(`Pawn: ${pawnFingerCount} fingers → select ${targetSq}`)
-                    grabbedSquareRef.current = targetSq
-                    setGestureState('grabbing')
-                  }
-                }
-                activeGesture.current = null
-                useGameStore.getState().setHandGesturePieceType(null)
-                useGameStore.getState().setOneHandPreviewSquare(null)
-              }
-            } else {
-              pawnColumnRef.current = null
             }
           } else {
-            oneHandPickRef.current = null
-            useGameStore.getState().setOneHandPreviewSquare(null)
-            // ── Non-pawn multi-piece selection ───────────────────────────────────
-            // Two-hand mode: keep left-hand/right-hand disambiguation.
-            const sorted = [...matchingSquares].sort((a, b) =>
-              'abcdefgh'.indexOf(a[0]) - 'abcdefgh'.indexOf(b[0])
-            )
-            const leftPiece  = playerSide === 'white' ? sorted[0]                : sorted[sorted.length - 1]
-            const rightPiece = playerSide === 'white' ? sorted[sorted.length - 1] : sorted[0]
-
-            let targetSq: string | null = null
-            let pickLabel = ''
-            const classifyHand = (lm: NormalizedLandmark[] | null) =>
-              lm ? detectHandGesture(classifyGesture(lm)) : null
-            const leftType  = classifyHand(userLeftHandRef.current)
-            const rightType = classifyHand(userRightHandRef.current)
-            const usedLeft  = leftType  === cur.pieceType
-            const usedRight = rightType === cur.pieceType
-            if (usedLeft !== usedRight) {
-              targetSq = usedRight ? rightPiece : leftPiece
-              pickLabel = `${usedRight ? 'right' : 'left'} hand`
-            }
-
-            if (targetSq) {
-              cur.fired = true
-              if (onSelectSquare.current) {
-                const selected = onSelectSquare.current(targetSq)
-                if (selected) {
-                  useGameStore.getState().addGestureLog(
-                    `${cur.pieceType.toUpperCase()}: ${pickLabel} → select ${targetSq}`
-                  )
-                  grabbedSquareRef.current = targetSq
-                  setGestureState('grabbing')
-                }
+            // ── Pawn: stable point + fist-close to confirm ────────────────────
+            if (confirmFistClosedEdge && stableTarget && onSelectSquare.current) {
+              const selected = onSelectSquare.current(stableTarget)
+              if (selected) {
+                useGameStore.getState().addGestureLog(
+                  `P: point ${pointHeldMs.toFixed(0)}ms + fist → select ${stableTarget}`
+                )
+                cur.fired = true
+                sweepCandidateRef.current = null
+                sweepCandidateSinceRef.current = 0
+                sweepCommittedRef.current = null
+                grabbedSquareRef.current = stableTarget
+                postSelectCooldownUntil.current = performance.now() + 1500
+                setGestureState('grabbing')
+                activeGesture.current = null
+                oneHandPickRef.current = null
+                pointStableRef.current = { sq: null, since: 0 }
+                useGameStore.getState().setHandGesturePieceType(null)
+                useGameStore.getState().setOneHandPreviewSquare(null)
               }
-              activeGesture.current = null
-              useGameStore.getState().setHandGesturePieceType(null)
-              useGameStore.getState().setOneHandPreviewSquare(null)
             }
-            // else: ambiguous intent — keep pieces highlighted and wait
           }
+          // else: keep pieces highlighted and wait
         } else {
           oneHandPickRef.current = null
           useGameStore.getState().setOneHandPreviewSquare(null)
@@ -1441,7 +1142,7 @@ export function useGesture(
         releaseSince.current = null
       }
     }
-  }, [landmarks, calibration, gestureState, setCursor, setGestureState, containerRef, playerSide, armModeEnabled, oneHandMode, kingPawnStepMode])
+  }, [landmarks, calibration, gestureState, setCursor, setGestureState, containerRef, playerSide, armModeEnabled])
 
   return { registerHandlers }
 }

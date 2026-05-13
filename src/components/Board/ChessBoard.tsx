@@ -9,7 +9,6 @@ export const ChessBoard: React.FC = () => {
     cursor,
     gestureState,
     playerSide,
-    oneHandMode,
     handGesturePieceType,
     oneHandPreviewSquare,
     sweepPreviewSquare,
@@ -23,21 +22,10 @@ export const ChessBoard: React.FC = () => {
   const chess = new Chess(game.fen)
   const board = chess.board() // 8x8 array [row][col], row 0 = rank 8
 
-  // Highlight candidates for gesture piece selection.
+  // Highlight only the right-hand pointed square (right-hand-only mode)
   const pieceHighlights = new Set<string>()
-  if (handGesturePieceType) {
-    if (oneHandMode) {
-      if (oneHandPreviewSquare) pieceHighlights.add(oneHandPreviewSquare)
-    } else {
-      for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-          const p = board[r][c]
-          if (p && p.type === handGesturePieceType && p.color === game.turn) {
-            pieceHighlights.add(`${'abcdefgh'[c]}${8 - r}`)
-          }
-        }
-      }
-    }
+  if (handGesturePieceType && oneHandPreviewSquare) {
+    pieceHighlights.add(oneHandPreviewSquare)
   }
 
   const squares: React.ReactNode[] = []

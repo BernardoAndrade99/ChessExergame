@@ -261,8 +261,6 @@ const GameScreen: React.FC = () => {
     triggerFlash,
     setStockfish,
     armModeEnabled,
-    oneHandMode,
-    kingPawnStepMode,
   } = useGameStore()
   const { selectSquare, makeMove, makeMoveFromUci, resetGame: resetChess, loadFen } = useChessEngine()
   const { getBestMove, newGame } = useStockfish()
@@ -528,20 +526,11 @@ const GameScreen: React.FC = () => {
           <div className="text-sm text-muted" style={{ lineHeight: 2 }}>
             {armModeEnabled ? (
               <>
-                🤌 <strong>Show piece gesture</strong> to highlight options<br />
-                {oneHandMode
-                  ? <>👉 <strong>Right-hand direction</strong> chooses between same-piece options<br /></>
-                  : <>🫲 <strong>Left/Right hand</strong> chooses left/right piece<br /></>}
-                {oneHandMode && <>✅ <strong>Close right hand</strong> to confirm selected piece<br /></>}
-                {oneHandMode
-                  ? <>✊ <strong>Close right hand</strong> to confirm drop<br /></>
-                  : <>✊ <strong>Close left hand</strong> to confirm drop<br /></>}
+                🤌 <strong>Show piece gesture</strong> (L=♞, V=♝, ✊=♜, 4=♚, 🖐=♛, ☝=♟)<br />
+                👉 <strong>Point right hand</strong> to choose between same-piece options<br />
+                🎯 <strong>Sweep arm over target square</strong> to complete the move<br />
+                ✊ <strong>Close right fist</strong> to confirm drop<br />
                 ✖️ <strong>Arms X while king grabbed</strong> to castle (when legal)<br />
-                ♟ <strong>Repeat pawn hold</strong> to cycle same-file pawns<br />
-                {kingPawnStepMode && !oneHandMode && <>🚶 <strong>King/Pawn step mode</strong> uses torso + mirrored pawn swipes<br /></>}
-                {(kingPawnStepMode && !oneHandMode)
-                  ? <>🐴 <strong>Knight</strong> uses jump + turn sequence<br /></>
-                  : <>🐴 <strong>Knight</strong> uses L-target aiming + {oneHandMode ? 'right' : 'left'}-hand confirm<br /></>}
               </>
             ) : (
               <>

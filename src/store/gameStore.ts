@@ -82,10 +82,6 @@ interface ChessMoveStore {
   // Phase 1.5 — Arm tracking mode
   armModeEnabled: boolean
   setArmModeEnabled: (v: boolean) => void
-  oneHandMode: boolean
-  setOneHandMode: (v: boolean) => void
-  kingPawnStepMode: boolean
-  setKingPawnStepMode: (v: boolean) => void
   detectedPieceType: ArmPieceType | null   // null = Queen/King/Pawn (no arm pattern)
   armConfidence: number                    // 0–1
   setArmDetection: (pieceType: ArmPieceType | null, confidence: number) => void
@@ -179,10 +175,6 @@ export const useGameStore = create<ChessMoveStore>((set) => ({
   // Phase 1.5 — Arm tracking mode
   armModeEnabled: true,
   setArmModeEnabled: (armModeEnabled) => set({ armModeEnabled }),
-  oneHandMode: false,
-  setOneHandMode: (oneHandMode) => set({ oneHandMode }),
-  kingPawnStepMode: false,
-  setKingPawnStepMode: (kingPawnStepMode) => set({ kingPawnStepMode }),
   detectedPieceType: null,
   armConfidence: 0,
   setArmDetection: (detectedPieceType, armConfidence) => set({ detectedPieceType, armConfidence }),
