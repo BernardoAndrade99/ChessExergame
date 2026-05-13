@@ -19,6 +19,7 @@ import { SEQUENCES, DIFFICULTY_LABEL, DIFFICULTY_COLOR as SEQ_DIFF_COLOR, seqDur
 import type { Sequence } from './lib/sequences'
 import { MiniBoard } from './components/Board/MiniBoard'
 import { DancePreviewScreen } from './components/DancePreview/DancePreviewScreen'
+import { LandmarkStudioScreen } from './components/LandmarkStudio/LandmarkStudioScreen'
 import type { Puzzle } from './lib/puzzles'
 
 // ─── Sequences Screen ────────────────────────────────────────────────────────
@@ -137,6 +138,13 @@ const SequencesScreen: React.FC = () => {
       {/* Bottom hint */}
       <div className="seq-bottom-bar">
         <span>★ Favorite sequences to track your progress</span>
+        <button
+          className="btn btn-ghost"
+          style={{ fontSize: '0.75rem', padding: '4px 12px', marginLeft: 'auto', opacity: 0.6 }}
+          onClick={() => setAppScreen('landmark-studio')}
+        >
+          📷 Landmark Studio
+        </button>
       </div>
     </div>
   )
@@ -617,6 +625,7 @@ export default function App() {
 
   if (appScreen === 'sequences') return <SequencesScreen />
   if (appScreen === 'dance-preview') return <DancePreviewScreen />
+  if (appScreen === 'landmark-studio') return <LandmarkStudioScreen />
   if (appScreen === 'side-select') return <SideSelectScreen />
   if (appScreen === 'calibration') {
     return (

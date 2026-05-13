@@ -42,12 +42,14 @@ export interface ArmLandmarks {
 interface UseMediaPipePoseOptions {
   videoRef: React.RefObject<HTMLVideoElement>
   onResults: (arms: ArmLandmarks | null) => void
+  onAllLandmarks?: (landmarks: NormalizedLandmark[] | null) => void
   enabled?: boolean
 }
 
 export function useMediaPipePose({
   videoRef,
   onResults,
+  onAllLandmarks,
   enabled = true,
 }: UseMediaPipePoseOptions) {
   const poseLandmarkerRef = useRef<PoseLandmarker | null>(null)
@@ -70,6 +72,7 @@ export function useMediaPipePose({
 
         if (result.landmarks && result.landmarks.length > 0) {
           const lm = result.landmarks[0]
+          onAllLandmarks?.(lm)
           // Ensure all required landmarks exist
           if (lm.length > 24) {
             onResults({
@@ -87,6 +90,7 @@ export function useMediaPipePose({
             onResults(null)
           }
         } else {
+          onAllLandmarks?.(null)
           onResults(null)
         }
       }
