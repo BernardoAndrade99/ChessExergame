@@ -300,15 +300,21 @@ const GameScreen: React.FC = () => {
   const [puzzleFailed, setPuzzleFailed] = useState(false)
   const [puzzleHint, setPuzzleHint] = useState<string | null>(null)
   const puzzleMoveIndexRef = useRef(0)
+  const opponentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadPuzzle = useCallback((puzzle: Puzzle) => {
+    if (opponentTimerRef.current) clearTimeout(opponentTimerRef.current)
     setPuzzleSolved(false)
     setPuzzleFailed(false)
     setPuzzleHint(null)
     puzzleMoveIndexRef.current = 0
     loadFen(puzzle.fen)
     setCurrentPuzzle(puzzle)
-  }, [loadFen])
+    // If player is Black, auto-play White's first move after a delay
+    if (playerSide === 'black') {
+      setTimeout(() => autoPlayOpponentRef.current(0), 1000)
+    }
+  }, [loadFen, playerSide])
 
   useEffect(() => {
     if (initializedRef.current) return
@@ -317,8 +323,13 @@ const GameScreen: React.FC = () => {
       resetChess()
     } else {
       loadFen(currentPuzzle.fen)
+      // If player is Black, White must play first — schedule it after a short delay
+      if (playerSide === 'black') {
+        setTimeout(() => autoPlayOpponentRef.current(0), 1000)
+      }
     }
-  }, [gameMode, resetChess, loadFen, currentPuzzle.fen])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handlePuzzleHint = useCallback(() => {
     const nextMove = currentPuzzle.solution[puzzleMoveIndexRef.current]
@@ -409,6 +420,8 @@ const GameScreen: React.FC = () => {
           setPuzzleHint(null)
           if (puzzleMoveIndexRef.current >= currentPuzzle.solution.length) {
             setPuzzleSolved(true)
+          } else {
+            autoPlayOpponentRef.current(puzzleMoveIndexRef.current)
           }
         }
       } else {
@@ -428,11 +441,39 @@ const GameScreen: React.FC = () => {
     }
   }, [gameMode, currentPuzzle, makeMove, triggerFlash, setStockfish])
 
+  // ── Opponent auto-play for sequence training ──────────────────────────────
+  // Uses a ref so the recursive setTimeout captures the latest closure values
+  // without needing to be listed as a useCallback dependency.
+  const autoPlayOpponentRef = useRef<(idx: number) => void>(() => {})
+  autoPlayOpponentRef.current = (idx: number) => {
+    if (gameMode !== 'puzzle') return
+    const solution = currentPuzzle.solution
+    if (idx >= solution.length) return
+    // Opponent's indices: if player is White → odd indices; if Black → even indices
+    const isOppMove = playerSide === 'white' ? idx % 2 === 1 : idx % 2 === 0
+    if (!isOppMove) return
+    if (opponentTimerRef.current) clearTimeout(opponentTimerRef.current)
+    opponentTimerRef.current = setTimeout(() => {
+      const uci = solution[idx]
+      const result = makeMoveFromUci(uci)
+      if (result.success) {
+        const nextIdx = idx + 1
+        puzzleMoveIndexRef.current = nextIdx
+        if (nextIdx >= solution.length) {
+          setPuzzleSolved(true)
+        } else {
+          autoPlayOpponentRef.current(nextIdx)  // chain consecutive opponent moves
+        }
+      }
+    }, 700)
+  }
+
   useEffect(() => {
     registerHandlers(handleSelect, handleDrop)
   }, [registerHandlers, handleSelect, handleDrop])
 
   const handleReset = useCallback(() => {
+    if (opponentTimerRef.current) clearTimeout(opponentTimerRef.current)
     resetChess()
     newGame()
     prevBestMoveRef.current = null

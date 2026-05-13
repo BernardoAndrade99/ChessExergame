@@ -520,7 +520,7 @@ export function useGesture(
         // immediately after being grabbed.
         {
           const nowSt = performance.now()
-          const sweepCheckSquare = sweepCommittedRef.current ?? rightSquareName ?? squareName
+          const sweepCheckSquare = sweepCommittedRef.current
           if (
             grabbedSquareRef.current
             && sweepCheckSquare
