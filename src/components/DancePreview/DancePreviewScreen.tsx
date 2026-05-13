@@ -57,8 +57,15 @@ function buildFrames(startFen: string, uciMoves: string[]): MoveFrame[] {
   return frames
 }
 
-// Auto-advance interval (ms) — time each move frame is shown
-const FRAME_MS = 1800
+// White moves (even indices, 0-based) are the user's — show for longer
+// Black moves (odd indices) are the opponent's — flash by quickly
+const USER_FRAME_MS = 1800
+const OPP_FRAME_MS  = 400
+
+/** Returns how long to show the frame at the given 0-based index */
+function frameDuration(index: number): number {
+  return index % 2 === 0 ? USER_FRAME_MS : OPP_FRAME_MS
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export const DancePreviewScreen: React.FC = () => {
@@ -96,7 +103,7 @@ export const DancePreviewScreen: React.FC = () => {
     stopTimer()
     timerRef.current = setTimeout(() => {
       advanceTo(currentIndex + 1)
-    }, FRAME_MS)
+    }, frameDuration(currentIndex))
     return stopTimer
   }, [playing, currentIndex, advanceTo, stopTimer])
 

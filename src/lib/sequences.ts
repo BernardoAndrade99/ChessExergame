@@ -10,9 +10,15 @@ export interface Sequence {
   difficulty: 'beginner' | 'intermediate' | 'advanced'
 }
 
-/** Estimated duration: each move takes ~3 seconds */
+// User moves (white, even-index plies) take ~3s; opponent moves (black, odd) take ~0.5s
+const USER_MOVE_SEC = 3
+const OPP_MOVE_SEC = 0.5
+
+/** Estimated duration accounting for faster opponent moves */
 export function seqDuration(moves: string[]): string {
-  const totalSec = moves.length * 3
+  const userMoves = Math.ceil(moves.length / 2)
+  const oppMoves  = Math.floor(moves.length / 2)
+  const totalSec  = Math.round(userMoves * USER_MOVE_SEC + oppMoves * OPP_MOVE_SEC)
   const m = Math.floor(totalSec / 60)
   const s = totalSec % 60
   return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`
