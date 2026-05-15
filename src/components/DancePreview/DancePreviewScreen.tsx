@@ -138,7 +138,7 @@ function buildFrames(startFen: string, uciMoves: string[]): MoveFrame[] {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export const DancePreviewScreen: React.FC = () => {
-  const { pendingPuzzle, isCalibrated, setAppScreen } = useGameStore()
+  const { pendingPuzzle, isCalibrated, setAppScreen, setPlayerSide } = useGameStore()
 
   const frames: MoveFrame[] = React.useMemo(() => {
     if (!pendingPuzzle) return []
@@ -163,9 +163,12 @@ export const DancePreviewScreen: React.FC = () => {
   const handleNext = () => {
     if (finished) return
     setEngaged(true)
-    if (phase === 'select') {
+    const isOpp = currentFrame ? currentFrame.moveIndex % 2 === 0 : false
+    if (!isOpp && phase === 'select') {
+      // user move: show selection phase first, then movement phase
       setPhase('move')
     } else {
+      // opponent move (skip to next directly) or user move phase 2 → advance
       const next = currentIndex + 1
       if (next >= frames.length) { setFinished(true) }
       else { setCurrentIndex(next); setPhase('select') }
@@ -175,15 +178,24 @@ export const DancePreviewScreen: React.FC = () => {
   const handlePrev = () => {
     setEngaged(true); setFinished(false)
     if (phase === 'move') {
-      setPhase('select')
-    } else if (currentIndex > 0) {
+      // if this is a user move, step back to select phase; for opponent just go to prev move
+      const isOpp = currentFrame ? currentFrame.moveIndex % 2 === 0 : false
+      if (!isOpp) { setPhase('select'); return }
+    }
+    if (currentIndex > 0) {
+      const prevFrame = frames[currentIndex - 1]
+      const prevIsOpp = prevFrame ? prevFrame.moveIndex % 2 === 0 : false
       setCurrentIndex(currentIndex - 1)
-      setPhase('move')
+      // opponent moves have no select phase, go straight to move
+      setPhase(prevIsOpp ? 'move' : 'select')
     }
   }
 
   const handleReady = () => {
-    setAppScreen(isCalibrated ? 'side-select' : 'side-select')
+    if (pendingPuzzle) {
+      setPlayerSide(pendingPuzzle.sideToMove === 'w' ? 'white' : 'black')
+    }
+    setAppScreen(isCalibrated ? 'game' : 'calibration')
   }
 
   if (!pendingPuzzle) return null
@@ -204,20 +216,24 @@ export const DancePreviewScreen: React.FC = () => {
   const gestureName = currentFrame ? gestureLabel(currentFrame.piece, currentFrame.from, currentFrame.to) : ''
   const gestureHeading = currentFrame
     ? isUserMove
-      ? (phase === 'select' ? gestureName : `${currentFrame.from} → ${currentFrame.to}`)
+      ? phase === 'select'
+        ? `Select ${PIECE_LABEL[currentFrame.piece]}`
+        : gestureName
       : `${currentFrame.from} → ${currentFrame.to}`
     : ''
   const gestureDetail = currentFrame
     ? isUserMove
       ? phase === 'select'
         ? selectionGestureText(currentFrame.piece, currentFrame.from)
-        : `${PIECE_LABEL[currentFrame.piece]} has moved to ${currentFrame.to}`
+        : `Move your ${PIECE_LABEL[currentFrame.piece]} from ${currentFrame.from} to ${currentFrame.to}`
       : `Opponent's ${PIECE_LABEL[currentFrame.piece]} moves ${currentFrame.from} → ${currentFrame.to}`
     : ''
 
   const gifs = currentFrame
     ? isUserMove
-      ? resolveGestures(currentFrame.piece, currentFrame.from, currentFrame.to)
+      ? phase === 'select'
+        ? [PIECE_FALLBACK[currentFrame.piece] ?? PIECE_FALLBACK.p]
+        : resolveGestures(currentFrame.piece, currentFrame.from, currentFrame.to)
       : ['/gestures/idle.gif']
     : []
 
