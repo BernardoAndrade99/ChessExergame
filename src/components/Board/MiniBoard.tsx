@@ -7,13 +7,15 @@ interface MiniBoardProps {
   size?: number
   /** Optionally flip the board (black at bottom) */
   flipped?: boolean
+  /** Algebraic square names to highlight, e.g. ['e2'] */
+  highlightSquares?: string[]
 }
 
 /**
  * Read-only board that renders SVG pieces from /ChessPiecesSvg/.
  * Drop-in replacement for the old Unicode glyph version.
  */
-export const MiniBoard: React.FC<MiniBoardProps> = ({ fen, size, flipped = false }) => {
+export const MiniBoard: React.FC<MiniBoardProps> = ({ fen, size, flipped = false, highlightSquares }) => {
   let board: ReturnType<InstanceType<typeof Chess>['board']>
   try {
     board = new Chess(fen).board()
@@ -45,17 +47,23 @@ export const MiniBoard: React.FC<MiniBoardProps> = ({ fen, size, flipped = false
     >
       {rows.map((row, ri) =>
         cols(row).map((piece, ci) => {
-          const isLight = (ri + ci) % 2 === 0
-          const pieceKey = piece ? `${piece.color}${piece.type.toUpperCase()}` : null
+          const isLight      = (ri + ci) % 2 === 0
+          const pieceKey     = piece ? `${piece.color}${piece.type.toUpperCase()}` : null
+          const fileLetter   = flipped ? 'abcdefgh'[7 - ci] : 'abcdefgh'[ci]
+          const rankNumber   = flipped ? ri + 1 : 8 - ri
+          const isHighlighted = highlightSquares?.includes(`${fileLetter}${rankNumber}`) ?? false
           return (
             <div
               key={`${ri}-${ci}`}
               style={{
-                background: isLight ? 'var(--sq-light)' : 'var(--sq-dark)',
+                background: isHighlighted
+                  ? (isLight ? 'rgba(245,158,11,0.42)' : 'rgba(245,158,11,0.52)')
+                  : isLight ? 'var(--sq-light)' : 'var(--sq-dark)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 position: 'relative',
+                boxShadow: isHighlighted ? 'inset 0 0 0 2px #f59e0b' : undefined,
               }}
             >
               {pieceKey && (
