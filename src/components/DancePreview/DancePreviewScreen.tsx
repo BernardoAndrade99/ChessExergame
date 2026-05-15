@@ -42,6 +42,8 @@ function resolveGestures(piece: string, from: string, to: string): string[] {
       // Mostly sideways        (|df|=2): turn first, then jump
       return Math.abs(dr) === 2 ? [jump, turn] : [turn, jump]
     }
+    case 'p':
+      return ['/gestures/stepForward.gif']
     case 'r': {
       if (dr === 0) return [df > 0 ? '/gestures/LRsweep.gif' : PIECE_FALLBACK.r]
       return [dr > 0 ? '/gestures/DUsweep.gif' : '/gestures/UDsweep.gif']
@@ -84,6 +86,10 @@ function gestureLabel(piece: string, from: string, to: string): string {
     case 'b': {
       const isSlash = (df > 0 && dr > 0) || (df < 0 && dr < 0)
       return isSlash ? 'Diagonal Sweep ↗' : 'Diagonal Sweep ↖'
+    }
+    case 'p': {
+      const steps = Math.abs(dr)
+      return steps === 2 ? 'Step Forward twice' : 'Step Forward once'
     }
     default: return `${PIECE_LABEL[piece] ?? 'Piece'} Move`
   }
@@ -141,51 +147,22 @@ export const DancePreviewScreen: React.FC = () => {
 
   const [currentIndex, setCurrentIndex] = useState(0)
   const [phase, setPhase] = useState<MovePhase>('select')
-  const [playing, setPlaying] = useState(false)
   const [finished, setFinished] = useState(false)
   const [engaged, setEngaged] = useState(false)  // true once user starts stepping
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const currentFrame = frames[currentIndex] ?? null
   const startFen = pendingPuzzle?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
-  const stopTimer = useCallback(() => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
-  }, [])
-
-  // Auto-advance: for user moves: select → move → next. For opponent: single beat → next.
-  useEffect(() => {
-    if (!playing || !currentFrame) return
-    stopTimer()
-    const isOpp = currentFrame.moveIndex % 2 === 0
-    timerRef.current = setTimeout(() => {
-      if (!isOpp && phase === 'select') {
-        setPhase('move')
-      } else {
-        const nextIndex = currentIndex + 1
-        if (nextIndex >= frames.length) {
-          setFinished(true)
-          setPlaying(false)
-        } else {
-          setCurrentIndex(nextIndex)
-          setPhase('select')
-        }
-      }
-    }, phaseDuration(currentFrame.moveIndex, phase))
-    return stopTimer
-  }, [playing, currentIndex, phase, currentFrame, frames.length, stopTimer])
-
-  const handlePlay = () => {
+  const handleStart = () => {
     setCurrentIndex(0)
     setPhase('select')
     setFinished(false)
-    setPlaying(true)
     setEngaged(true)
   }
 
   const handleNext = () => {
-    stopTimer(); setPlaying(false); setEngaged(true)
     if (finished) return
+    setEngaged(true)
     if (phase === 'select') {
       setPhase('move')
     } else {
@@ -196,7 +173,7 @@ export const DancePreviewScreen: React.FC = () => {
   }
 
   const handlePrev = () => {
-    stopTimer(); setPlaying(false); setEngaged(true); setFinished(false)
+    setEngaged(true); setFinished(false)
     if (phase === 'move') {
       setPhase('select')
     } else if (currentIndex > 0) {
