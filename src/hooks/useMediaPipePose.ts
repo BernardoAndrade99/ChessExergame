@@ -25,6 +25,10 @@ export const POSE_LANDMARKS = {
   RIGHT_WRIST:    16,
   LEFT_HIP:       23,
   RIGHT_HIP:      24,
+  LEFT_KNEE:      25,
+  RIGHT_KNEE:     26,
+  LEFT_ANKLE:     27,
+  RIGHT_ANKLE:    28,
 } as const
 
 export interface ArmLandmarks {
@@ -37,6 +41,10 @@ export interface ArmLandmarks {
   rightWrist:    NormalizedLandmark
   leftHip:       NormalizedLandmark
   rightHip:      NormalizedLandmark
+  leftKnee:      NormalizedLandmark
+  rightKnee:     NormalizedLandmark
+  leftAnkle:     NormalizedLandmark
+  rightAnkle:    NormalizedLandmark
 }
 
 interface UseMediaPipePoseOptions {
@@ -85,6 +93,10 @@ export function useMediaPipePose({
               rightWrist:    lm[POSE_LANDMARKS.RIGHT_WRIST],
               leftHip:       lm[POSE_LANDMARKS.LEFT_HIP],
               rightHip:      lm[POSE_LANDMARKS.RIGHT_HIP],
+              leftKnee:      lm[POSE_LANDMARKS.LEFT_KNEE],
+              rightKnee:     lm[POSE_LANDMARKS.RIGHT_KNEE],
+              leftAnkle:     lm[POSE_LANDMARKS.LEFT_ANKLE],
+              rightAnkle:    lm[POSE_LANDMARKS.RIGHT_ANKLE],
             })
           } else {
             onResults(null)

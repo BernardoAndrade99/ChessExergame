@@ -24,7 +24,7 @@ import type { Puzzle } from './lib/puzzles'
 
 // ─── Sequences Screen ────────────────────────────────────────────────────────
 const SequencesScreen: React.FC = () => {
-  const { setGameMode, setAppScreen, setPendingPuzzle } = useGameStore()
+  const { setGameMode, setAppScreen, setPendingPuzzle, setPlayerSide } = useGameStore()
   const [filter, setFilter] = React.useState<'all' | Sequence['difficulty']>('all')
   const [favorites, setFavorites] = React.useState<Set<string>>(() => {
     try {
@@ -47,6 +47,8 @@ const SequencesScreen: React.FC = () => {
   }
 
   const handleSelect = (seq: Sequence) => {
+    const isBlack = seq.title.toLowerCase().includes('defense')
+    const side = isBlack ? 'b' : 'w'
     const puzzle: import('./lib/puzzles').Puzzle = {
       id: seq.id,
       title: seq.title,
@@ -55,8 +57,10 @@ const SequencesScreen: React.FC = () => {
       solution: seq.moves,
       theme: 'Opening',
       difficulty: seq.difficulty === 'beginner' ? 'easy' : seq.difficulty === 'intermediate' ? 'medium' : 'hard',
-      sideToMove: 'w',
+      sideToMove: side,
     }
+    
+    setPlayerSide(isBlack ? 'black' : 'white')
     setPendingPuzzle(puzzle)
     setGameMode('puzzle')
     setAppScreen('dance-preview')
@@ -409,10 +413,19 @@ const GameScreen: React.FC = () => {
   const { registerHandlers } = useGesture(landmarks, poseLandmarksRef, boardRef as React.RefObject<HTMLElement>, userLeftHandRef, userRightHandRef)
 
   const handleSelect = useCallback((sq: string): boolean => {
-    return selectSquare(sq, gameMode === 'puzzle')
-  }, [selectSquare, gameMode])
+    if (gameMode === 'puzzle') {
+      const expectedUci = currentPuzzle.solution[puzzleMoveIndexRef.current]
+      const expectedFrom = expectedUci?.slice(0, 2)
+      if (sq !== expectedFrom) {
+        setPuzzleHint(`Wrong piece! ❌`)
+        triggerFlash(sq, 'illegal')
+        return false // blocks selection
+      }
+    }
+    return selectSquare(sq)
+  }, [selectSquare, gameMode, currentPuzzle, triggerFlash])
 
-  const handleDrop = useCallback((from: string, to: string) => {
+  const handleDrop = useCallback((from: string, to: string): boolean => {
     if (gameMode === 'puzzle') {
       // --- Puzzle move validation ---
       const expectedUci = currentPuzzle.solution[puzzleMoveIndexRef.current]
@@ -420,31 +433,35 @@ const GameScreen: React.FC = () => {
       const expectedTo = expectedUci?.slice(2, 4)
       const isCorrect = from === expectedFrom && to === expectedTo
 
-      if (isCorrect) {
-        const result = makeMove(from, to)
-        if (result.success) {
-          puzzleMoveIndexRef.current += 1
-          setPuzzleFailed(false)
-          setPuzzleHint(null)
-          if (puzzleMoveIndexRef.current >= currentPuzzle.solution.length) {
-            setPuzzleSolved(true)
-          } else {
-            autoPlayOpponentRef.current(puzzleMoveIndexRef.current)
-          }
-        }
-      } else {
-        // Wrong move — flash and reject
-        triggerFlash(to, 'illegal')
-        setPuzzleFailed(true)
-        setPuzzleHint(null)
+      if (!isCorrect) {
+        // Silently reject the move to allow the user to continue sweeping
+        // and find the right square without being spammed by "Wrong move" errors,
+        // since the sweep auto-drop triggers continuously to probe the target.
+        return false // blocks move
       }
+
+      const result = makeMove(from, to)
+      if (result.success) {
+        puzzleMoveIndexRef.current += 1
+        setPuzzleFailed(false)
+        setPuzzleHint(null)
+        if (puzzleMoveIndexRef.current >= currentPuzzle.solution.length) {
+          setPuzzleSolved(true)
+        } else {
+          autoPlayOpponentRef.current(puzzleMoveIndexRef.current)
+        }
+        return true
+      }
+      return false
     } else {
       // --- Free game ---
       const result = makeMove(from, to)
       if (result.success) {
         setStockfish({ bestMove: null })
+        return true
       } else {
         triggerFlash(to, 'illegal')
+        return false
       }
     }
   }, [gameMode, currentPuzzle, makeMove, triggerFlash, setStockfish])
@@ -576,9 +593,10 @@ const GameScreen: React.FC = () => {
             {armModeEnabled ? (
               <>
                 🤌 <strong>Show piece gesture</strong> (L=♞, V=♝, ✊=♜, 4=♚, 🖐=♛, ☝=♟)<br />
-                👉 <strong>Point right hand</strong> to choose between same-piece options<br />
-                🎯 <strong>Sweep arm over target square</strong> to complete the move<br />
-                ✊ <strong>Close right fist</strong> to confirm drop<br />
+                👉 <strong>Point right hand</strong> to pick the exact piece (fist only for non-pawns)<br />
+                🎯 <strong>Sweep arm over target square</strong> to move automatically<br />
+                ♟️ <strong>Pawn</strong>: step forward to advance; diagonal captures via sweep (auto)<br />
+                🐴 <strong>Knight</strong>: jump front/back + turn shoulders left/right (auto)<br />
                 ✖️ <strong>Arms X while king grabbed</strong> to castle (when legal)<br />
               </>
             ) : (

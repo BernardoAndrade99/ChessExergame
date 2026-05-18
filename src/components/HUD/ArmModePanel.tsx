@@ -2,7 +2,7 @@
  * ArmModePanel.tsx
  * HUD panel for the gesture-based piece selection mode (right-hand only).
  * Each hand shape highlights the matching piece type; point right hand at
- * the desired piece to select it, then aim arm at target and close fist to move.
+ * the desired piece to select it, then sweep/step/jump to move.
  */
 
 import React from 'react'
@@ -118,28 +118,24 @@ export const ArmModePanel: React.FC = () => {
             <span style={{ fontSize: '1.1rem' }}>👉</span>
             <div>
               <strong style={{ color: 'var(--text-secondary)' }}>Point right index</strong>{' '}
-              at desired piece — hold 0.5s to select (pawns: 0.8s + fist)
+              at desired piece — hold to select (pawns auto after 1.5s)
             </div>
           </div>
           <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: '1.1rem' }}>💪</span>
             <div>
               <strong style={{ color: 'var(--text-secondary)' }}>Aim right arm</strong>{' '}
-              toward target square — sweep preview appears
-            </div>
-          </div>
-          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.1rem' }}>✊</span>
-            <div>
-              <strong style={{ color: 'var(--text-secondary)' }}>Close right fist</strong>{' '}
-              to drop piece on highlighted square
+              toward target square — move fires automatically when sweep stabilizes
             </div>
           </div>
           <div style={{ marginTop: 4, color: 'var(--text-secondary)' }}>
             King: short arm sweep = 1 square, arms X = castle
           </div>
           <div style={{ marginTop: 2, color: 'var(--text-secondary)' }}>
-            Knight: aim arm at one L-target, close fist to move
+            Pawn: body step forward = push; diagonal captures use sweep (auto)
+          </div>
+          <div style={{ marginTop: 2, color: 'var(--text-secondary)' }}>
+            Knight: jump (front/back) + shoulder turn (left/right) = auto move
           </div>
         </div>
       ) : (

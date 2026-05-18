@@ -5,8 +5,8 @@ import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 interface UseMediaPipeHandsOptions {
   videoRef: React.RefObject<HTMLVideoElement>
   // primaryLandmarks: whichever hand is active (for cursor/gesture)
-  // userLeftLandmarks:  user's physical left hand  (MediaPipe calls it "right" in mirrored selfie)
-  // userRightLandmarks: user's physical right hand (MediaPipe calls it "left"  in mirrored selfie)
+  // userLeftLandmarks/userRightLandmarks: raw MediaPipe left/right labels.
+  // Physical-hand resolution is handled later in useGesture.
   onResults: (
     primaryLandmarks: NormalizedLandmark[] | null,
     userLeftLandmarks: NormalizedLandmark[] | null,
@@ -83,11 +83,20 @@ export function useMediaPipeHands({
           }
 
           activeHandIndexRef.current = handIdx
-          // Note: this camera does NOT reverse handedness — MediaPipe "right" = user's RIGHT hand.
-          const mpRightIdx = result.handedness?.findIndex(h => h.some(c => c.categoryName?.toLowerCase() === 'right')) ?? -1
-          const mpLeftIdx  = result.handedness?.findIndex(h => h.some(c => c.categoryName?.toLowerCase() === 'left'))  ?? -1
-          const userLeftLm  = mpLeftIdx  >= 0 ? result.landmarks[mpLeftIdx]  : null  // user's left hand
-          const userRightLm = mpRightIdx >= 0 ? result.landmarks[mpRightIdx] : null  // user's right hand
+          // Ignore MP handedness labels; derive physical side by screen geometry.
+          // In raw frame (before CSS mirror), smaller x is typically player's right side.
+          const byX = [...result.landmarks].sort((a, b) => a[0].x - b[0].x)
+          let userRightLm: NormalizedLandmark[] | null = null
+          let userLeftLm: NormalizedLandmark[] | null = null
+          if (byX.length >= 2) {
+            userRightLm = byX[0]
+            userLeftLm = byX[1]
+          } else if (byX.length === 1) {
+            const only = byX[0]
+            // Ignore a lone hand on the player's left side.
+            if (only[0].x <= 0.62) userRightLm = only
+            else userLeftLm = only
+          }
           onResults(result.landmarks[handIdx], userLeftLm, userRightLm)
         } else {
           activeHandIndexRef.current = 0

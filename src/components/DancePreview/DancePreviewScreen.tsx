@@ -258,7 +258,6 @@ export const DancePreviewScreen: React.FC = () => {
                 key={i}
                 className={`dp-dot${i < currentIndex || finished ? ' done' : ''}${i === currentIndex && !finished ? ' active' : ''}`}
                 onClick={() => {
-                  stopTimer(); setPlaying(false)
                   setCurrentIndex(i); setPhase('select'); setFinished(false); setEngaged(true)
                 }}
               />

@@ -14,7 +14,7 @@ export const KNIGHT_BISHOP_TEST_PUZZLE: Puzzle = {
   id: 'test_kb',
   title: 'Knight & Bishop Test',
   description: 'White to move — test knight and bishop gestures from a central position.',
-  fen: '4k3/8/8/8/2BN4/8/8/4K3 w - - 0 1',
+  fen: '4k3/8/8/8/2BN4/8/4P3/4K3 w - - 0 1',
   solution: ['e4f6'],
   theme: 'Test',
   difficulty: 'easy',

@@ -41,6 +41,12 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({ arms, width, height })
     const rightElbow    = mirror(arms.rightElbow)
     const leftWrist     = mirror(arms.leftWrist)
     const rightWrist    = mirror(arms.rightWrist)
+    const leftHip       = mirror(arms.leftHip)
+    const rightHip      = mirror(arms.rightHip)
+    const leftKnee      = mirror(arms.leftKnee)
+    const rightKnee     = mirror(arms.rightKnee)
+    const leftAnkle     = mirror(arms.leftAnkle)
+    const rightAnkle    = mirror(arms.rightAnkle)
 
     // Color scheme
     const isRecording = isRecordingTrajectory
@@ -73,6 +79,19 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({ arms, width, height })
     // Right arm
     drawLine(rightShoulder, rightElbow)
     drawLine(rightElbow, rightWrist)
+    
+    // Torso sides
+    drawLine(leftShoulder, leftHip)
+    drawLine(rightShoulder, rightHip)
+    drawLine(leftHip, rightHip)
+    
+    // Left leg
+    drawLine(leftHip, leftKnee)
+    drawLine(leftKnee, leftAnkle)
+    
+    // Right leg
+    drawLine(rightHip, rightKnee)
+    drawLine(rightKnee, rightAnkle)
 
     // Joint dots
     const drawDot = (p: SkeletonPoint, radius: number, color: string) => {
@@ -87,6 +106,12 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({ arms, width, height })
     drawDot(rightShoulder, 4, jointColor)
     drawDot(leftElbow,     5, jointColor)
     drawDot(rightElbow,    5, jointColor)
+    drawDot(leftHip,       5, jointColor)
+    drawDot(rightHip,      5, jointColor)
+    drawDot(leftKnee,      5, jointColor)
+    drawDot(rightKnee,     5, jointColor)
+    drawDot(leftAnkle,     6, jointColor)
+    drawDot(rightAnkle,    6, jointColor)
 
     // Wrist dots — larger, colored when recording
     drawDot(leftWrist,  isRecording ? 9 : 6, isRecording ? pieceColor : jointColor)
