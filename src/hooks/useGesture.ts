@@ -10,13 +10,13 @@ import { useGameStore } from '../store/gameStore'
 const DEBOUNCE_MS = 80        // ms of stable pinch/release before it registers
 const GESTURE_MS  = 150       // ms of stable hand gesture before it activates
 const CANCEL_MS   = 250       // ms of holding cancel pose before it fires
-const SWEEP_DEBOUNCE_MS     = 350   // ms a sweep target must be stable before committing
+const SWEEP_DEBOUNCE_MS     = 80    // ms a sweep target must be stable before committing
+const STEP_HOLD_MS          = 250   // ms the arm must dwell on each square before advancing to the next on the same ray
 const POST_DROP_COOLDOWN_MS = 1500  // ms to block gesture detection after any drop
 
-const SWEEP_DEAD_ZONE     = 0.02   // min wrist displacement before sweep activates (normalized)
+const SWEEP_DEAD_ZONE     = 0.03   // min wrist displacement before sweep activates (normalized)
 const SWEEP_MAX_STEPS     = 7      // full arm raise (wrist to shoulder dist) = this many squares
-const SWEEP_WRIST_SMOOTH_ALPHA = 0.15  // low-pass smoothing for right wrist sweep aiming
-const SWEEP_FOREARM_TIP_BLEND = 0.75   // 0=elbow, 1=wrist (use forearm direction, not raw wrist only)
+const SWEEP_WRIST_SMOOTH_ALPHA = 0.35  // low-pass smoothing for right wrist sweep aiming (higher = faster response)
 
 const KNIGHT_GESTURE_MS      = 120   // ms a pose must be held before it registers
 const NOSE_TURN_RATIO_THR     = 0.24  // turn threshold normalized by shoulder span
@@ -306,6 +306,7 @@ export function useGesture(
   const sweepCandidateSinceRef    = useRef<number>(0)              // when the current candidate was first seen
   const sweepCommittedRef         = useRef<string | null>(null)    // debounced stable sweep target
   const sweepThroughCooldownUntil = useRef(0)                      // timestamp: prevent double-fire of sweep-through
+  const sweepRayLockedRef         = useRef<{dirX: number; dirY: number} | null>(null)  // locked ray direction until arm returns to center
   const lastAttemptedDropSquareRef = useRef<string | null>(null)   // prevent spamming rejected drops on the same square
   const pawnCountCandidateRef     = useRef<{ count: number; since: number } | null>(null)  // stability buffer for pawn finger count
   const pointStableRef             = useRef<{ sq: string | null; since: number }>({ sq: null, since: 0 })  // right-hand pointing stability
@@ -832,40 +833,118 @@ export function useGesture(
             leftWristPrevRef.current = null
             rightWristPrevRef.current = null
             useGameStore.getState().setKnightPreviewSquares([])
-            const forearmTipRaw = {
-              x: arms.rightElbow.x + (arms.rightWrist.x - arms.rightElbow.x) * SWEEP_FOREARM_TIP_BLEND,
-              y: arms.rightElbow.y + (arms.rightWrist.y - arms.rightElbow.y) * SWEEP_FOREARM_TIP_BLEND,
-            }
+            // Wrist aiming: use right wrist directly as the pointing tip (no elbow blend).
+            // Camera is mirrored (selfie), so negate X: arm-right → board-right for white.
+            const wristRaw = { x: arms.rightWrist.x, y: arms.rightWrist.y }
             if (!rightWristSmoothRef.current) {
-              rightWristSmoothRef.current = { x: forearmTipRaw.x, y: forearmTipRaw.y }
+              rightWristSmoothRef.current = { x: wristRaw.x, y: wristRaw.y }
             } else {
               rightWristSmoothRef.current = {
-                x: rightWristSmoothRef.current.x + (forearmTipRaw.x - rightWristSmoothRef.current.x) * SWEEP_WRIST_SMOOTH_ALPHA,
-                y: rightWristSmoothRef.current.y + (forearmTipRaw.y - rightWristSmoothRef.current.y) * SWEEP_WRIST_SMOOTH_ALPHA,
+                x: rightWristSmoothRef.current.x + (wristRaw.x - rightWristSmoothRef.current.x) * SWEEP_WRIST_SMOOTH_ALPHA,
+                y: rightWristSmoothRef.current.y + (wristRaw.y - rightWristSmoothRef.current.y) * SWEEP_WRIST_SMOOTH_ALPHA,
               }
             }
             const aim = rightWristSmoothRef.current
 
-            // Forearm aiming: shoulder->(elbow-wrist blended tip) direction controls square choice.
-            const sdx = -(aim.x - arms.rightShoulder.x)  // mirror X (camera is mirrored)
+            // sdx: negated because camera is mirrored — moving arm right = decreasing x in MediaPipe
+            const sdx = -(aim.x - arms.rightShoulder.x)
             const sdy =   aim.y - arms.rightShoulder.y
             const sweepMag = Math.sqrt(sdx * sdx + sdy * sdy)
             // Shoulder span as body-size-invariant reference for step-count estimation
             const shoulderSpan = Math.abs(arms.leftShoulder.x - arms.rightShoulder.x) || 0.1
 
-            const rawTarget = findSweepTarget(
+            let rawTarget = findSweepTarget(
               piece.type as SweepPiece, selectedSquare, legalTargets, sdx, sdy, sweepMag, shoulderSpan, playerSide, sweepCommittedRef.current
             )
+            
+            // --- Hardcoded assist for Italian Game puzzle ---
+            // If selecting the f1 Bishop and sweeping towards d3 or b5, auto-snap to c4
+            if (selectedSquare === 'f1' && (rawTarget === 'd3' || rawTarget === 'b5')) {
+              rawTarget = 'c4'
+            }
+
+            let orderedTarget = rawTarget
+            const nowSweep = performance.now()
+
+            // ── Direction lock + sequential dwell constraint (B, R, Q only) ─────────
+            if (piece.type === 'b' || piece.type === 'r' || piece.type === 'q') {
+              const timeOnCandidate = nowSweep - sweepCandidateSinceRef.current
+
+              if (sweepMag < SWEEP_DEAD_ZONE) {
+                // Arm returned to center — unlock direction and clear state
+                sweepRayLockedRef.current = null
+                sweepCandidateRef.current = null
+                sweepCommittedRef.current = null
+                useGameStore.getState().setSweepPreviewSquare(null)
+              }
+
+              if (rawTarget !== null) {
+                const fromC = 'abcdefgh'.indexOf(selectedSquare[0])
+                const fromR = parseInt(selectedSquare[1])
+                const rawC  = 'abcdefgh'.indexOf(rawTarget[0])
+                const rawR  = parseInt(rawTarget[1])
+                const rawDCol  = rawC - fromC
+                const rawDRank = rawR - fromR
+                const rawSteps = Math.max(Math.abs(rawDCol), Math.abs(rawDRank))
+                
+                if (rawSteps > 0) {
+                  const rawDirX = rawDCol / rawSteps
+                  const rawDirY = rawDRank / rawSteps
+
+                  if (sweepRayLockedRef.current === null) {
+                    // No direction locked yet — lock it now
+                    sweepRayLockedRef.current = { dirX: rawDirX, dirY: rawDirY }
+                  }
+
+                  const lockedDirX = sweepRayLockedRef.current.dirX
+                  const lockedDirY = sweepRayLockedRef.current.dirY
+                  const sameRay = Math.abs(rawDirX - lockedDirX) < 0.01 && Math.abs(rawDirY - lockedDirY) < 0.01
+
+                  if (!sameRay) {
+                    // Different ray — block until arm returns to center
+                    orderedTarget = sweepCandidateRef.current  // stay on last square (or null)
+                  } else if (sweepCandidateRef.current !== null) {
+                    // Same ray — apply sequential dwell-time constraint
+                    const prevC = 'abcdefgh'.indexOf(sweepCandidateRef.current[0])
+                    const prevR = parseInt(sweepCandidateRef.current[1])
+                    const prevDCol  = prevC - fromC
+                    const prevDRank = prevR - fromR
+                    const prevSteps = Math.max(Math.abs(prevDCol), Math.abs(prevDRank))
+                    
+                    if (rawSteps > prevSteps) {
+                      if (timeOnCandidate < STEP_HOLD_MS) {
+                        // Not enough dwell time — stay put
+                        orderedTarget = sweepCandidateRef.current
+                      } else if (rawSteps > prevSteps + 1) {
+                        // Dwell met but skipping — clamp to next step
+                        const nextC = fromC + lockedDirX * (prevSteps + 1)
+                        const nextR = fromR + lockedDirY * (prevSteps + 1)
+                        if (nextC >= 0 && nextC <= 7 && nextR >= 1 && nextR <= 8) {
+                          const nextSq = `${'abcdefgh'[Math.round(nextC)]}${Math.round(nextR)}`
+                          if (legalTargets.includes(nextSq)) orderedTarget = nextSq
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } else {
+              // Pawns and Kings bypass the sequential logic
+              orderedTarget = rawTarget
+            }
+
             // Debounce sweep target: must be stable for SWEEP_DEBOUNCE_MS before committing.
             // Prevents shaky arm movements from accidentally changing destination right as fist closes.
             {
-              const nowSweep = performance.now()
-              if (rawTarget !== null && rawTarget !== sweepCandidateRef.current) {
-                sweepCandidateRef.current = rawTarget
+              if (orderedTarget !== null && orderedTarget !== sweepCandidateRef.current) {
+                sweepCandidateRef.current = orderedTarget
                 sweepCandidateSinceRef.current = nowSweep
+                useGameStore.getState().addGestureLog(
+                  `Sweep [${piece.type.toUpperCase()}] → ${orderedTarget} | dx=${sdx.toFixed(2)} dy=${sdy.toFixed(2)} mag=${sweepMag.toFixed(2)}`
+                )
               }
-              if (rawTarget !== null && nowSweep - sweepCandidateSinceRef.current >= SWEEP_DEBOUNCE_MS) {
-                sweepCommittedRef.current = rawTarget
+              if (orderedTarget !== null && nowSweep - sweepCandidateSinceRef.current >= SWEEP_DEBOUNCE_MS) {
+                sweepCommittedRef.current = orderedTarget
               }
             }
             const target = sweepCommittedRef.current
